@@ -49,38 +49,25 @@ class MessageDebouncer:
     ) -> None:
         """处理接收到的私聊消息并调度防抖与打断。"""
         image_urls = image_urls or []
-
-        # 1. 立即持久化入库用户消息
-        async with async_session_factory() as session:
-            user_msg = ChatMessage(
-                user_id=user_id,
-                role="user",
-                content=text,
-                image_urls=image_urls if image_urls else None,
-                created_at=datetime.now(),
-            )
-            session.add(user_msg)
-            await session.commit()
-
         state = self.get_session(user_id)
 
-        # 2. 如果之前正在执行大模型生成或发送，立即强制打断并丢弃
+        # 1. 如果之前正在执行大模型生成或发送，立即强制打断并丢弃
         if state.generation_task and not state.generation_task.done():
             logger.info(f"用户 {user_id} 发送新消息，强制打断正在生成的回复任务")
             state.generation_task.cancel()
             state.generation_task = None
 
-        # 3. 如果已有防抖计时器在运行，取消旧计时器（重置 1.5s 计时）
+        # 2. 如果已有防抖计时器在运行，取消旧计时器（重置 1.5s 计时）
         if state.timer_task and not state.timer_task.done():
             state.timer_task.cancel()
             state.timer_task = None
 
-        # 4. 追加到未处理消息缓冲
+        # 3. 追加到未处理消息缓冲
         if text.strip():
             state.pending_texts.append(text.strip())
         state.pending_images.extend(image_urls)
 
-        # 5. 启动新的 1.5s 倒计时任务
+        # 4. 启动新的 1.5s 倒计时任务
         state.timer_task = asyncio.create_task(
             self._debounce_timer(user_id)
         )
@@ -183,6 +170,18 @@ class MessageDebouncer:
 
             if not reply_text:
                 return
+
+            # 持久化存储用户本次发送的消息
+            async with async_session_factory() as session:
+                user_msg = ChatMessage(
+                    user_id=user_id,
+                    role="user",
+                    content=combined_text,
+                    image_urls=combined_images if combined_images else None,
+                    created_at=datetime.now(),
+                )
+                session.add(user_msg)
+                await session.commit()
 
             # 执行分句与延迟发送
             await humanizer.dispatch(
