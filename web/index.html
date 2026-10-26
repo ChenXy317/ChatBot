@@ -3,119 +3,227 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QQ 机器人接管控制台</title>
+  <title>QQ 接管控制台</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="layout">
-    <header class="header">
-      <div class="header-left">
-        <h1 class="brand-title">QQ 接管控制台</h1>
-        <div class="status-indicator" id="napcatStatus">
-          <span class="status-dot"></span>
-          <span class="status-text">检测中...</span>
+  <!-- 页面根容器 -->
+  <div class="app-container">
+    <!-- 顶部导航栏 -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <h1 class="brand-title">QQ 接入与接管中心</h1>
+          <span class="brand-subtitle">OneBot v11 · LLM 拟人化中继引擎</span>
         </div>
       </div>
-      <div class="header-right">
-        <label class="switch-container">
-          <span class="switch-label">自动接管</span>
-          <input type="checkbox" id="masterSwitch" checked>
-          <span class="switch-slider"></span>
-        </label>
+
+      <div class="header-actions">
+        <!-- NapCat 实时连接状态徽标 -->
+        <div class="connection-badge" id="napcatBadge">
+          <span class="badge-dot"></span>
+          <span class="badge-text" id="statusText">正在检测协议端...</span>
+        </div>
+
+        <div class="header-divider"></div>
+
+        <!-- 全局接管总开关 -->
+        <div class="master-toggle">
+          <span class="toggle-caption">自动接管</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="masterSwitch" checked>
+            <span class="toggle-track"></span>
+          </label>
+        </div>
       </div>
     </header>
 
+    <!-- 主导航选项卡 -->
     <nav class="nav-tabs">
-      <button class="tab-btn active" data-tab="config">模型与规则</button>
-      <button class="tab-btn" data-tab="whitelist">好友白名单</button>
-      <button class="tab-btn" data-tab="history">对话记录</button>
-      <button class="tab-btn" data-tab="logs">系统日志</button>
+      <button class="nav-item active" data-tab="config">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        <span>模型与规则配置</span>
+      </button>
+
+      <button class="nav-item" data-tab="whitelist">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <span>好友白名单</span>
+      </button>
+
+      <button class="nav-item" data-tab="history">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span>对话记录</span>
+      </button>
+
+      <button class="nav-item" data-tab="logs">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 17 10 11 4 5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+        <span>系统运行日志</span>
+      </button>
     </nav>
 
-    <main class="content">
-      <!-- 1. 配置管理视图 -->
+    <!-- 主体内容卡片区域 -->
+    <main class="main-content">
+      <!-- 1. 模型与参数面板 -->
       <section class="tab-pane active" id="pane-config">
-        <div class="card">
+        <div class="panel-card">
           <div class="card-header">
-            <h2>模型供应商与参数</h2>
-            <button class="btn btn-secondary" id="testConnBtn">连通性测试</button>
+            <div class="header-title-group">
+              <h2 class="card-title">模型接口与拟人化参数</h2>
+              <p class="card-description">配置兼容 OpenAI 规范的 API 供应商，并设定消息防抖与打字节奏算法</p>
+            </div>
+            <button class="btn btn-secondary" id="testConnBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+              <span>连通性测试</span>
+            </button>
           </div>
-          <div class="card-body">
-            <form id="configForm">
-              <div class="form-grid">
-                <div class="form-group">
-                  <label for="api_base">API 基础地址 (Base URL)</label>
-                  <input type="text" id="api_base" name="api_base" required placeholder="https://api.deepseek.com/v1">
-                </div>
-                <div class="form-group">
-                  <label for="api_key">API 密钥 (API Key)</label>
-                  <input type="password" id="api_key" name="api_key" placeholder="sk-...">
-                </div>
-                <div class="form-group">
-                  <label for="model">模型名称 (Model)</label>
-                  <input type="text" id="model" name="model" required placeholder="deepseek-chat">
-                </div>
-                <div class="form-group">
-                  <label for="debounce_delay">消息防抖缓冲时间 (秒)</label>
-                  <input type="number" id="debounce_delay" name="debounce_delay" step="0.1" min="0.5" max="10.0" value="1.5">
-                  <small class="field-hint">用户发信后等待该时长无新消息才传给模型；期间来信自动重置并取消旧回复</small>
-                </div>
-                <div class="form-group">
-                  <label for="typing_speed">单字打字延迟 (秒/字)</label>
-                  <input type="number" id="typing_speed" name="typing_speed" step="0.01" min="0.01" max="1.0" value="0.15">
-                  <small class="field-hint">用于模拟真人输入打字等待时间并触发“正在输入中”</small>
-                </div>
-                <div class="form-group">
-                  <label for="temperature">采样温度 (Temperature: <span id="tempVal">0.8</span>)</label>
-                  <input type="range" id="temperature" name="temperature" min="0" max="2.0" step="0.05" value="0.8">
-                </div>
-                <div class="form-group">
-                  <label for="top_p">核采样 (Top P: <span id="toppVal">0.9</span>)</label>
-                  <input type="range" id="top_p" name="top_p" min="0" max="1.0" step="0.05" value="0.9">
-                </div>
-                <div class="form-group">
-                  <label for="max_tokens">最大回复 Token 数量</label>
-                  <input type="number" id="max_tokens" name="max_tokens" min="64" max="16384" value="2048">
-                </div>
+
+          <!-- 测试反馈弹层/卡片 -->
+          <div class="test-result-box" id="testResultBox" style="display: none;">
+            <div class="test-header">
+              <span class="test-badge" id="testBadge">测试中</span>
+              <span class="test-latency" id="testLatency">- ms</span>
+            </div>
+            <div class="test-content" id="testContent"></div>
+          </div>
+
+          <form id="configForm" class="card-body">
+            <div class="field-grid">
+              <div class="field-item">
+                <label for="api_base">API 基础地址 (Base URL)</label>
+                <input type="text" id="api_base" name="api_base" required placeholder="https://api.deepseek.com/v1">
+                <span class="field-tip">必须提供包含 /v1 的完整服务端点</span>
               </div>
 
-              <div class="form-group mt-16">
-                <label for="system_prompt">全局 System Prompt</label>
-                <textarea id="system_prompt" name="system_prompt" rows="8" placeholder="设定人设、口吻及格式约束..."></textarea>
+              <div class="field-item">
+                <label for="api_key">API 密钥 (API Key)</label>
+                <input type="password" id="api_key" name="api_key" placeholder="sk-...">
+                <span class="field-tip">保存在本地数据库中，本地无鉴权模型可留空</span>
               </div>
 
-              <div class="card-footer">
-                <span id="saveStatus" class="status-msg"></span>
-                <button type="submit" class="btn btn-primary">保存配置</button>
+              <div class="field-item">
+                <label for="model">模型名称 (Model Identifier)</label>
+                <input type="text" id="model" name="model" required placeholder="deepseek-chat">
+                <span class="field-tip">支持各类文本及多模态视觉模型</span>
               </div>
-            </form>
-          </div>
+
+              <div class="field-item">
+                <label for="debounce_delay">
+                  <span>消息防抖缓冲 (Debounce)</span>
+                  <span class="val-pill" id="debounceVal">1.5s</span>
+                </label>
+                <input type="number" id="debounce_delay" name="debounce_delay" step="0.1" min="0.5" max="10.0" value="1.5">
+                <span class="field-tip">收到新消息后静默等待时长；期间若用户再次发信则重置并打断旧回复</span>
+              </div>
+
+              <div class="field-item">
+                <label for="typing_speed">
+                  <span>单字输入耗时 (Typing Pacing)</span>
+                  <span class="val-pill" id="typingVal">0.15s</span>
+                </label>
+                <input type="number" id="typing_speed" name="typing_speed" step="0.01" min="0.01" max="1.0" value="0.15">
+                <span class="field-tip">模拟真人击键速度；发送每句前向 QQ 广播“正在输入中”</span>
+              </div>
+
+              <div class="field-item">
+                <label for="max_tokens">最大生成 Token 数</label>
+                <input type="number" id="max_tokens" name="max_tokens" min="64" max="16384" value="2048">
+                <span class="field-tip">建议控制在 2048 以内保证响应敏捷</span>
+              </div>
+
+              <div class="field-item">
+                <div class="slider-header">
+                  <label for="temperature">采样温度 (Temperature)</label>
+                  <span class="val-pill" id="tempVal">0.8</span>
+                </div>
+                <input type="range" id="temperature" name="temperature" min="0" max="2.0" step="0.05" value="0.8">
+              </div>
+
+              <div class="field-item">
+                <div class="slider-header">
+                  <label for="top_p">核采样 (Top P)</label>
+                  <span class="val-pill" id="toppVal">0.9</span>
+                </div>
+                <input type="range" id="top_p" name="top_p" min="0" max="1.0" step="0.05" value="0.9">
+              </div>
+            </div>
+
+            <div class="field-item full-width mt-20">
+              <label for="system_prompt">全局 System Prompt</label>
+              <textarea id="system_prompt" name="system_prompt" rows="8" placeholder="约束模型的口吻、人设、格式、换行分句与禁止 Markdown 等规则..."></textarea>
+              <span class="field-tip">系统将自动在末尾追加精确到秒的当前系统时间与上下文时间戳</span>
+            </div>
+
+            <div class="card-footer">
+              <span class="footer-note">修改将即时作用于下一次会话周期</span>
+              <button type="submit" class="btn btn-primary" id="saveConfigBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                <span>保存运行时配置</span>
+              </button>
+            </div>
+          </form>
         </div>
       </section>
 
-      <!-- 2. 白名单管理视图 -->
+      <!-- 2. 白名单管理面板 -->
       <section class="tab-pane" id="pane-whitelist">
-        <div class="card">
+        <div class="panel-card">
           <div class="card-header">
-            <h2>好友接管白名单</h2>
-            <button class="btn btn-primary" id="openAddUserModal">添加好友</button>
+            <div class="header-title-group">
+              <h2 class="card-title">好友接管白名单</h2>
+              <p class="card-description">只有列入白名单并开启接管的好友，其私聊消息才会触发大模型回复</p>
+            </div>
+            <button class="btn btn-primary" id="openAddUserModal">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>添加接管好友</span>
+            </button>
           </div>
-          <div class="card-body">
-            <div class="table-responsive">
+
+          <div class="card-body p-0">
+            <div class="table-wrapper">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>QQ 号</th>
-                    <th>备注</th>
-                    <th>状态</th>
+                    <th style="width: 140px;">好友 QQ 号</th>
+                    <th style="width: 180px;">备注信息</th>
+                    <th style="width: 120px;">接管状态</th>
                     <th>专属 Prompt</th>
-                    <th>添加时间</th>
-                    <th>操作</th>
+                    <th style="width: 180px;">添加时间</th>
+                    <th style="width: 100px; text-align: right;">操作</th>
                   </tr>
                 </thead>
                 <tbody id="whitelistTableBody">
                   <tr>
-                    <td colspan="6" class="text-center">加载中...</td>
+                    <td colspan="6" class="table-empty">正在加载白名单数据...</td>
                   </tr>
                 </tbody>
               </table>
@@ -124,71 +232,110 @@
         </div>
       </section>
 
-      <!-- 3. 对话记录视图 -->
+      <!-- 3. 对话记录面板 -->
       <section class="tab-pane" id="pane-history">
-        <div class="card">
+        <div class="panel-card">
           <div class="card-header">
-            <h2>历史对话记录</h2>
-            <div class="history-controls">
-              <select id="historyUserSelect" class="select-input">
-                <option value="">选择好友 QQ</option>
+            <div class="header-title-group">
+              <h2 class="card-title">历史交互记录</h2>
+              <p class="card-description">按会话查看好友与模型的历史消息与图片记录</p>
+            </div>
+            <div class="filter-actions">
+              <select id="historyUserSelect" class="form-select">
+                <option value="">选择白名单好友</option>
               </select>
-              <button class="btn btn-secondary" id="refreshHistoryBtn">刷新</button>
+              <button class="btn btn-secondary btn-icon" id="refreshHistoryBtn" title="刷新记录">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+              </button>
             </div>
           </div>
-          <div class="card-body">
-            <div class="chat-container" id="chatContainer">
-              <div class="chat-placeholder">请选择好友查看对话历史</div>
+
+          <div class="card-body p-0">
+            <div class="chat-viewport" id="chatContainer">
+              <div class="empty-state">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>请从上方选择指定好友以加载历史会话</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- 4. 系统日志视图 -->
+      <!-- 4. 系统运行日志面板 -->
       <section class="tab-pane" id="pane-logs">
-        <div class="card">
+        <div class="panel-card">
           <div class="card-header">
-            <h2>运行日志</h2>
-            <button class="btn btn-secondary" id="refreshLogsBtn">刷新日志</button>
+            <div class="header-title-group">
+              <h2 class="card-title">运行事件与调度日志</h2>
+              <p class="card-description">查看大模型调用耗时、消息防抖重置事件及网关通信状态</p>
+            </div>
+            <div class="filter-actions">
+              <button class="btn btn-secondary" id="refreshLogsBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                <span>刷新日志</span>
+              </button>
+            </div>
           </div>
-          <div class="card-body">
-            <div class="log-viewer" id="logViewer">
-              <div class="log-line">暂无日志</div>
+
+          <div class="card-body p-0">
+            <div class="terminal-container" id="logViewer">
+              <div class="log-empty">正在加载日志流...</div>
             </div>
           </div>
         </div>
       </section>
     </main>
 
-    <!-- 模态框：添加白名单好友 -->
-    <div class="modal" id="addUserModal">
-      <div class="modal-dialog">
+    <!-- 模态对话框：添加好友 -->
+    <div class="modal-backdrop" id="addUserModal">
+      <div class="modal-card">
         <div class="modal-header">
-          <h3>添加白名单好友</h3>
-          <button class="close-btn" id="closeAddUserModal">&times;</button>
+          <h3 class="modal-title">添加好友至接管白名单</h3>
+          <button class="modal-close" id="closeAddUserModal" title="关闭">&times;</button>
         </div>
         <form id="addUserForm">
           <div class="modal-body">
-            <div class="form-group">
-              <label for="new_user_id">好友 QQ 号</label>
-              <input type="number" id="new_user_id" required placeholder="例如：12345678">
+            <div class="field-item">
+              <label for="new_user_id">好友 QQ 号码</label>
+              <input type="number" id="new_user_id" required placeholder="输入 5~11 位 QQ 数字">
             </div>
-            <div class="form-group">
-              <label for="new_remark">好友备注</label>
-              <input type="text" id="new_remark" placeholder="例如：同事张三">
+            <div class="field-item">
+              <label for="new_remark">备注名称 (可选)</label>
+              <input type="text" id="new_remark" placeholder="如：同学、客户李某">
             </div>
-            <div class="form-group">
-              <label for="new_custom_prompt">专属 Prompt (可选)</label>
-              <textarea id="new_custom_prompt" rows="4" placeholder="针对该好友的专门语气或记忆（留空使用全局配置）"></textarea>
+            <div class="field-item">
+              <label for="new_custom_prompt">专属人设与记忆 (可选)</label>
+              <textarea id="new_custom_prompt" rows="4" placeholder="针对该好友的专门语气、特定身份或背景记忆（留空则默认继承全局 Prompt）"></textarea>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" id="cancelAddUserBtn">取消</button>
-            <button type="submit" class="btn btn-primary">添加</button>
+            <button type="submit" class="btn btn-primary">确认添加</button>
           </div>
         </form>
       </div>
     </div>
+
+    <!-- 图片灯箱浮层 -->
+    <div class="lightbox-backdrop" id="lightboxModal">
+      <div class="lightbox-content">
+        <img id="lightboxImg" src="" alt="大图查看">
+        <button class="lightbox-close" id="lightboxClose">&times;</button>
+      </div>
+    </div>
+
+    <!-- 浮动 Toast 通知容器 -->
+    <div class="toast-container" id="toastContainer"></div>
   </div>
 
   <script src="/static/app.js"></script>
