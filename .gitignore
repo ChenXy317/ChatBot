@@ -4,3 +4,7 @@ __pycache__/
 .env
 .idea/
 .vscode/
+napcat/node_modules/
+napcat/*.dll
+napcat/*.exe
+napcat/logs/

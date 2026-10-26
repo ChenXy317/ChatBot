@@ -1,7 +1,7 @@
 @echo off
 setlocal
 title NapCatQQ Launcher
-cd /d "D:\NapCat\napcat_shell"
+cd /d "%~dp0napcat"
 
 echo ===================================================
 echo   Starting NapCatQQ...
