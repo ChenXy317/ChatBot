@@ -70,7 +70,9 @@ async def test_llm_connection(payload: TestConnectionRequest):
             max_tokens=200,
         )
         latency = (time.time() - start_time) * 1000
-        reply = resp.choices[0].message.content or ""
+        raw_reply = resp.choices[0].message.content or ""
+        from app.engine.think_stripper import ThinkStripper
+        reply = ThinkStripper().strip(raw_reply)
         return TestConnectionResponse(
             success=True,
             latency_ms=round(latency, 2),
