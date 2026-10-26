@@ -1,6 +1,14 @@
 @echo off
 setlocal
 title NapCatQQ Launcher
+cd /d "%~dp0"
+
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" napcat\patch_loader.py
+) else (
+    python napcat\patch_loader.py
+)
+
 cd /d "%~dp0napcat"
 
 echo ===================================================
