@@ -1,14 +1,23 @@
 @echo off
-chcp 65001 >nul
-title QQ ChatBot Agent
-echo 正在启动 QQ 接管中继服务...
+setlocal
+cd /d "%~dp0"
+title QQ ChatBot Server
 
-if not exist ".venv\Scripts\python.exe" (
-    echo 正在通过 uv 初始化虚拟环境并安装依赖...
-    uv venv
-    uv pip install -r requirements.txt
+echo ===================================================
+echo   QQ ChatBot Agent Server Launcher
+echo ===================================================
+
+if exist ".venv\Scripts\python.exe" (
+    set "PY_BIN=.venv\Scripts\python.exe"
+) else (
+    set "PY_BIN=python"
 )
 
-echo 启动 FastAPI 服务 (http://127.0.0.1:8000)...
-".venv\Scripts\python.exe" main.py
-pause
+echo Starting FastAPI server at http://127.0.0.1:8000 ...
+"%PY_BIN%" main.py
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo Server exited with error code %ERRORLEVEL%.
+    pause
+)
