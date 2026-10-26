@@ -13,7 +13,7 @@ if exist ".venv\Scripts\python.exe" (
     set "PY_BIN=python"
 )
 
-echo Starting FastAPI server at http://127.0.0.1:8000 ...
+echo Starting FastAPI server at http://127.0.0.1:8090 ...
 "%PY_BIN%" main.py
 
 if %ERRORLEVEL% NEQ 0 (

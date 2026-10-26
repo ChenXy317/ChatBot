@@ -3,9 +3,13 @@
 import os
 from pathlib import Path
 from urllib.parse import quote_plus
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# 加载项目根目录 .env 文件
+load_dotenv(BASE_DIR / ".env")
 
 
 class Settings(BaseSettings):
@@ -17,7 +21,7 @@ class Settings(BaseSettings):
     MYSQL_DATABASE: str = os.getenv("MYSQL_DATABASE", "qq_chatbot")
 
     SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0")
-    SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8000"))
+    SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8090"))
 
     @property
     def async_db_url(self) -> str:

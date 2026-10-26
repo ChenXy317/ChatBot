@@ -12,5 +12,5 @@ $PyBin = if (Test-Path ".\.venv\Scripts\python.exe") {
     "python"
 }
 
-Write-Host "启动服务：http://127.0.0.1:8000" -ForegroundColor Green
+Write-Host "启动服务：http://127.0.0.1:8090" -ForegroundColor Green
 & $PyBin main.py

@@ -57,7 +57,7 @@ MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=qq_chatbot
 
 SERVER_HOST=0.0.0.0
-SERVER_PORT=8000
+SERVER_PORT=8090
 ```
 
 ### 3. 启动中继后端
@@ -70,12 +70,12 @@ uv pip install -r requirements.txt
 python main.py
 ```
 
-服务启动后访问 `http://127.0.0.1:8000` 进入管理控制台，配置你的 API Key、模型与白名单好友。
+服务启动后访问 `http://127.0.0.1:8090` 进入管理控制台，配置你的 API Key、模型与白名单好友。
 
 ### 4. 接入 NapCatQQ
 
 1. 启动 NapCatQQ 桌面端或 Headless 端并扫码登录个人 QQ 号。
 2. 在 NapCat 的网络配置中添加反向 WebSocket 地址：
-   * **URL**: `ws://127.0.0.1:8000/ws/qq`
+   * **URL**: `ws://127.0.0.1:8090/ws/qq`
    * **重连间隔**: `3000` ms
 3. 连接成功后，控制台顶部状态点将显示为绿色在线。
