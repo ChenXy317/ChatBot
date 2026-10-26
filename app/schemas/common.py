@@ -1,0 +1,110 @@
+"""数据传输对象 (DTO) 与 Pydantic 校验模型。"""
+
+from datetime import datetime
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+
+class BotConfigBase(BaseModel):
+    """全局配置基础字段。"""
+    api_base: str = Field(..., description="OpenAI 兼容基础接口地址")
+    api_key: str = Field(default="", description="API 密钥")
+    model: str = Field(..., description="调用模型名称")
+    system_prompt: str = Field(..., description="系统人设提示词")
+    temperature: float = Field(default=0.8, ge=0.0, le=2.0, description="采样温度")
+    top_p: float = Field(default=0.9, ge=0.0, le=1.0, description="核采样比例")
+    max_tokens: int = Field(default=2048, ge=64, le=16384, description="最大生成 Token 数量")
+    debounce_delay: float = Field(default=1.5, ge=0.5, le=10.0, description="消息防抖缓冲秒数")
+    typing_speed: float = Field(default=0.15, ge=0.01, le=1.0, description="单字拟人输入延迟秒数")
+    is_enabled: bool = Field(default=True, description="是否开启自动接管")
+
+
+class BotConfigRead(BotConfigBase):
+    """配置读取响应。"""
+    id: int
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BotConfigUpdate(BaseModel):
+    """配置修改请求。"""
+    api_base: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    system_prompt: Optional[str] = None
+    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    top_p: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    max_tokens: Optional[int] = Field(default=None, ge=64, le=16384)
+    debounce_delay: Optional[float] = Field(default=None, ge=0.5, le=10.0)
+    typing_speed: Optional[float] = Field(default=None, ge=0.01, le=1.0)
+    is_enabled: Optional[bool] = None
+
+
+class WhitelistUserCreate(BaseModel):
+    """添加白名单用户。"""
+    user_id: int = Field(..., description="好友 QQ 号")
+    remark: str = Field(default="", description="好友备注")
+    is_enabled: bool = Field(default=True, description="是否启用接管")
+    custom_prompt: Optional[str] = Field(default=None, description="针对该好友的专属 Prompt")
+
+
+class WhitelistUserUpdate(BaseModel):
+    """更新白名单用户。"""
+    remark: Optional[str] = None
+    is_enabled: Optional[bool] = None
+    custom_prompt: Optional[str] = None
+
+
+class WhitelistUserRead(BaseModel):
+    """白名单读取响应。"""
+    id: int
+    user_id: int
+    remark: str
+    is_enabled: bool
+    custom_prompt: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatMessageRead(BaseModel):
+    """聊天历史记录读取响应。"""
+    id: int
+    user_id: int
+    role: str
+    content: str
+    image_urls: Optional[List[str]] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SystemLogRead(BaseModel):
+    """系统日志读取响应。"""
+    id: int
+    level: str
+    source: str
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TestConnectionRequest(BaseModel):
+    """模型接口连通性测试请求。"""
+    api_base: str
+    api_key: str
+    model: str
+
+
+class TestConnectionResponse(BaseModel):
+    """模型接口连通性测试结果。"""
+    success: bool
+    latency_ms: float
+    reply: str
+    error: Optional[str] = None
