@@ -67,7 +67,7 @@ async def test_llm_connection(payload: TestConnectionRequest):
         resp = await client.chat.completions.create(
             model=payload.model,
             messages=[{"role": "user", "content": "你好，这是一条连接测试消息，请回复两个字：收到"}],
-            max_tokens=20,
+            max_tokens=200,
         )
         latency = (time.time() - start_time) * 1000
         reply = resp.choices[0].message.content or ""
