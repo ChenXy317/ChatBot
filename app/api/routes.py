@@ -275,25 +275,25 @@ async def get_system_logs(limit: int = 50, db: AsyncSession = Depends(get_db_ses
 # ── 账号管理与协议端控制 ──
 
 @router.get("/accounts", response_model=AccountListResponse)
-async def list_accounts():
+def list_accounts():
     """获取所有已记录的 QQ 账号及当前状态。"""
     return account_manager.list_accounts()
 
 
 @router.get("/accounts/login-status", response_model=AccountLoginStatus)
-async def get_account_login_status():
+def get_account_login_status():
     """获取 NapCat 当前登录阶段，二维码只通过本地控制台转发。"""
     return account_manager.get_napcat_login_status()
 
 
 @router.post("/accounts/quick-login")
-async def quick_login_account(payload: AccountQuickLoginRequest):
+def quick_login_account(payload: AccountQuickLoginRequest):
     """在 NapCat 已启动时尝试免密快速登录。"""
     return account_manager.quick_login(payload.qq)
 
 
 @router.post("/accounts/switch")
-async def switch_account(payload: AccountSwitchRequest):
+def switch_account(payload: AccountSwitchRequest):
     """切换至指定账号并可选自动拉起 NapCat。"""
     qq = payload.qq.strip()
     if not qq:
@@ -309,7 +309,7 @@ async def switch_account(payload: AccountSwitchRequest):
 
 
 @router.post("/accounts/set-default")
-async def set_default_account(payload: AccountSetDefaultRequest):
+def set_default_account(payload: AccountSetDefaultRequest):
     """将指定账号设为默认启动账号。"""
     qq = payload.qq.strip()
     if not qq:
@@ -320,13 +320,13 @@ async def set_default_account(payload: AccountSetDefaultRequest):
 
 
 @router.post("/accounts/launch")
-async def launch_account(payload: AccountLaunchRequest):
+def launch_account(payload: AccountLaunchRequest):
     """启动或重启 NapCat 进程（支持指定 QQ 或扫码模式）。"""
     return account_manager.launch_napcat(qq=payload.qq, qr_mode=payload.qr_mode)
 
 
 @router.post("/accounts/stop")
-async def stop_napcat():
+def stop_napcat():
     """停止运行中的 NapCat/QQ 进程。"""
     ok = account_manager.stop_napcat()
     return {"success": ok, "message": "已发送停止进程指令"}
@@ -365,7 +365,7 @@ async def send_test_message(payload: MessageSendRequest):
 
 
 @router.delete("/accounts/{qq}")
-async def delete_account(qq: str):
+def delete_account(qq: str):
     """删除本地指定账号的配置文件。"""
     clean_qq = qq.strip()
     if gateway.is_connected and gateway.current_qq == clean_qq:
@@ -375,7 +375,7 @@ async def delete_account(qq: str):
 
 
 @router.get("/accounts/qrcode")
-async def get_qrcode():
+def get_qrcode():
     """获取扫码登录二维码图片。"""
     image = account_manager.get_qrcode_image()
     if not image:

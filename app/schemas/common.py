@@ -145,6 +145,7 @@ class AccountLoginStatus(BaseModel):
     login_phase: str
     login_error: str
     qrcode_url: str
+    has_qrcode: bool = False
 
 
 class AccountQuickLoginRequest(BaseModel):

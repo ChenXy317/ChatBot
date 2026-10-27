@@ -416,27 +416,16 @@ class AccountManager:
 
     @staticmethod
     def get_qrcode_image() -> Optional[bytes]:
-        """读取二维码图片；没有本地图片时从已认证的登录状态下载。"""
+        """读取二维码图片；优先从本地缓存读取。"""
         qr_path = AccountManager.get_qrcode_path()
         if qr_path:
             try:
                 with open(qr_path, "rb") as f:
-                    return f.read()
+                    data = f.read()
+                    if data.startswith(b"\x89PNG"):
+                        return data
             except OSError:
                 pass
-
-        status = AccountManager.get_napcat_login_status()
-        qrcode_url = status.get("qrcode_url", "")
-        if qrcode_url.startswith(("http://", "https://")):
-            try:
-                request = urllib.request.Request(
-                    qrcode_url,
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                with urllib.request.urlopen(request, timeout=4.0) as response:
-                    return response.read()
-            except OSError as error:
-                logger.warning("下载登录二维码失败: %s", error)
         return None
 
     @staticmethod
@@ -511,20 +500,25 @@ class AccountManager:
                     ).get("qrcode") or ""
                 except (OSError, RuntimeError, ValueError):
                     pass
+            has_qr = bool(AccountManager.get_qrcode_path()) or bool(qrcode_url)
             return {
                 "available": True,
                 "is_login": bool(status.get("isLogin")),
-                "login_phase": status.get("loginPhase") or "",
+                "login_phase": status.get("loginPhase") or ("waiting_qrcode" if has_qr else ""),
                 "login_error": status.get("loginError") or "",
                 "qrcode_url": qrcode_url,
+                "has_qrcode": has_qr,
             }
         except (OSError, RuntimeError, ValueError) as error:
+            running = AccountManager.is_process_running()
+            has_qr = bool(AccountManager.get_qrcode_path())
             return {
                 "available": False,
                 "is_login": False,
-                "login_phase": "",
-                "login_error": f"NapCat 登录服务尚未就绪: {error}",
+                "login_phase": "waiting_qrcode" if has_qr else ("starting" if running else "offline"),
+                "login_error": "" if (running or has_qr) else f"NapCat 尚未就绪: {error}",
                 "qrcode_url": "",
+                "has_qrcode": has_qr,
             }
 
     @classmethod

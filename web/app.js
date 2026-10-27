@@ -709,6 +709,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const loginPhaseLabels = {
     offline: "离线",
+    starting: "正在拉起 NapCat 协议端...",
     generating_qrcode: "正在生成二维码",
     waiting_qrcode: "等待扫码",
     qrcode_scanned: "二维码已扫描，等待确认",
@@ -722,8 +723,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (overviewLoginPhase) overviewLoginPhase.textContent = label;
     if (qrLoginStatus) qrLoginStatus.textContent = label;
     if (qrErrorMessage) {
-      qrErrorMessage.textContent = status.login_error || "";
-      qrErrorMessage.style.display = status.login_error ? "block" : "none";
+      if (phase === "starting" || phase === "waiting_qrcode" || !status.login_error) {
+        qrErrorMessage.textContent = "";
+        qrErrorMessage.style.display = "none";
+      } else {
+        qrErrorMessage.textContent = status.login_error;
+        qrErrorMessage.style.display = "block";
+      }
     }
     return label;
   }
@@ -746,10 +752,10 @@ document.addEventListener("DOMContentLoaded", () => {
         pollStatus();
         return true;
       }
-      if (status.qrcode_url && qrImage && !qrImage.src.includes("blob:")) {
+      if ((status.qrcode_url || status.has_qrcode) && qrImage) {
         await loadLoginQr(status);
       }
-      if (qrStatusTip && !status.qrcode_url) {
+      if (qrStatusTip && !status.qrcode_url && !status.has_qrcode) {
         qrStatusTip.textContent = "NapCat 正在生成登录二维码...";
       }
     } catch (err) {
@@ -762,17 +768,25 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadLoginQr(status) {
-    const qrUrl = status && status.qrcode_url;
-    if (!qrUrl || !qrImage) return false;
-    const res = await apiFetch(`/api/accounts/qrcode?t=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`二维码请求失败 (${res.status})`);
-    const blob = await res.blob();
-    if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl);
-    qrObjectUrl = URL.createObjectURL(blob);
-    qrImage.src = qrObjectUrl;
-    qrImage.style.display = "block";
-    if (qrLoading) qrLoading.style.display = "none";
-    return true;
+    if (!qrImage) return false;
+    try {
+      const res = await apiFetch(`/api/accounts/qrcode?t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) return false;
+      const blob = await res.blob();
+      if (!blob || blob.size < 50) return false;
+      if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl);
+      qrObjectUrl = URL.createObjectURL(blob);
+      qrImage.src = qrObjectUrl;
+      qrImage.style.display = "block";
+      if (qrLoading) qrLoading.style.display = "none";
+      if (qrErrorMessage) {
+        qrErrorMessage.textContent = "";
+        qrErrorMessage.style.display = "none";
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   async function loadAccounts() {
