@@ -42,12 +42,12 @@ chmod +x start.sh
 ./start.sh
 ```
 
-脚本会在 3306 没人听的时候拉起 MariaDB，创建 `qq_chatbot`，用 `uv` 安装依赖，然后启动 `http://127.0.0.1:8090`。
+只需要这一个终端。脚本拉起 MariaDB 和中继后，把中继放进后台（`http://127.0.0.1:8090`，日志 `/tmp/chatbot-server.log`），然后在当前终端启动 `/root/Napcat` 里的 NapCat，二维码直接打在屏幕上。Ctrl+C 只退出 QQ 登录，中继继续跑。已经登录过时可以 `QQ=你的QQ号 ./start.sh` 快速登录。
 
-仓库里的 `napcat/` 是 Windows x64 QQ 注入壳，不要在这里执行 `start_napcat.bat`。QQ 协议端放到能登录桌面版 QQ 的机器上，反向 WebSocket 填：
+仓库里的 `napcat/` 仍是 Windows 快照，不要执行 `start_napcat.bat`。NapCat 的 WebUI 里把反向 WebSocket 配成：
 
 ```
-ws://<这台机器的地址>:8090/ws/qq
+ws://127.0.0.1:8090/ws/qq
 ```
 
 ## Windows 快速开始
