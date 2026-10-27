@@ -383,6 +383,12 @@ def get_qrcode():
     return Response(content=image, media_type="image/png")
 
 
+@router.post("/accounts/qrcode/refresh")
+def refresh_qrcode():
+    """向 NapCat 请求刷新登录二维码。"""
+    return account_manager.refresh_qrcode()
+
+
 # ── 系统状态 ──
 
 @router.get("/status")

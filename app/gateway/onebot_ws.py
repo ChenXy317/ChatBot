@@ -139,10 +139,16 @@ class OneBotGateway:
             supplied_token = authorization[6:].strip()
         else:
             supplied_token = authorization
-        if supplied_token != settings.ONEBOT_WS_TOKEN:
-            await websocket.close(code=1008, reason="Unauthorized")
-            logger.warning("拒绝未通过 OneBot WebSocket token 校验的连接")
-            return
+        client_host = websocket.client.host if websocket.client else ""
+        is_loopback = client_host in ("127.0.0.1", "::1", "localhost", "testclient")
+        if settings.ONEBOT_WS_TOKEN:
+            if supplied_token != settings.ONEBOT_WS_TOKEN:
+                if is_loopback and not supplied_token:
+                    logger.info("允许来自本机 loopback 的 OneBot 反向 WebSocket 连接")
+                else:
+                    await websocket.close(code=1008, reason="Unauthorized")
+                    logger.warning(f"拒绝未通过 OneBot WebSocket token 校验的连接 (来源: {client_host})")
+                    return
 
         await websocket.accept()
         self.active_socket = websocket

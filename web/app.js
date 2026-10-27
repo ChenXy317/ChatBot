@@ -708,12 +708,13 @@ document.addEventListener("DOMContentLoaded", () => {
   let qrObjectUrl = null;
 
   const loginPhaseLabels = {
-    offline: "离线",
+    offline: "NapCat 离线 / 等待刷新",
     starting: "正在拉起 NapCat 协议端...",
-    generating_qrcode: "正在生成二维码",
-    waiting_qrcode: "等待扫码",
-    qrcode_scanned: "二维码已扫描，等待确认",
-    initializing: "正在初始化账号",
+    generating_qrcode: "正在生成二维码...",
+    waiting_qrcode: "等待手机 QQ 扫码",
+    qrcode_scanned: "二维码已扫描，请在手机端确认登录",
+    reconnecting: "正在重新连接 QQ 登录服务...",
+    initializing: "已授权，正在接入账号...",
     ready: "登录成功",
   };
 
@@ -723,12 +724,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (overviewLoginPhase) overviewLoginPhase.textContent = label;
     if (qrLoginStatus) qrLoginStatus.textContent = label;
     if (qrErrorMessage) {
-      if (phase === "starting" || phase === "waiting_qrcode" || !status.login_error) {
-        qrErrorMessage.textContent = "";
-        qrErrorMessage.style.display = "none";
-      } else {
+      if (status.login_error) {
         qrErrorMessage.textContent = status.login_error;
         qrErrorMessage.style.display = "block";
+      } else {
+        qrErrorMessage.textContent = "";
+        qrErrorMessage.style.display = "none";
       }
     }
     return label;
@@ -1015,23 +1016,25 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ── 扫码登录浮层与轮询 ──
-  function openQrModal() {
+  async function openQrModal() {
     if (!qrModal) return;
     qrModal.classList.add("active");
     if (qrImage) qrImage.style.display = "none";
     if (qrLoading) qrLoading.style.display = "flex";
-    if (qrStatusTip) qrStatusTip.textContent = "正在拉起 NapCat 扫码服务...";
+    if (qrStatusTip) qrStatusTip.textContent = "正在获取最新扫码登录二维码...";
+    if (qrLoginStatus) qrLoginStatus.textContent = "正在请求二维码...";
     if (qrErrorMessage) {
       qrErrorMessage.textContent = "";
       qrErrorMessage.style.display = "none";
     }
 
-    // 触发后端以二维码模式启动
-    apiFetch("/api/accounts/launch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ qr_mode: true }),
-    }).catch(console.error);
+    // 优先刷新二维码；若 NapCat 未运行则后端会自动拉起
+    try {
+      await apiFetch("/api/accounts/qrcode/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (_) {}
 
     startQrPolling();
     pollQrLogin();
@@ -1070,9 +1073,27 @@ document.addEventListener("DOMContentLoaded", () => {
   if (closeQrModal) closeQrModal.addEventListener("click", closeQrModalFunc);
   if (cancelQrBtn) cancelQrBtn.addEventListener("click", closeQrModalFunc);
   if (refreshQrBtn) {
-    refreshQrBtn.addEventListener("click", () => {
-      startQrPolling();
-      showToast("正在重新探测二维码...", "info");
+    refreshQrBtn.addEventListener("click", async () => {
+      refreshQrBtn.disabled = true;
+      showToast("正在请求刷新二维码...", "info");
+      try {
+        const res = await apiFetch("/api/accounts/qrcode/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("二维码已刷新，请使用手机 QQ 重新扫码", "success");
+        } else {
+          showToast(data.message || "刷新二维码失败", "error");
+        }
+      } catch (err) {
+        showToast(`刷新二维码失败: ${err.message}`, "error");
+      } finally {
+        refreshQrBtn.disabled = false;
+        startQrPolling();
+        pollQrLogin();
+      }
     });
   }
 

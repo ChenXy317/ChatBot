@@ -9,7 +9,8 @@
         "name": "ChatBot-Backend",
         "url": "ws://127.0.0.1:8090/ws/qq",
         "reportSelfMessage": false,
-        "reconnectInterval": 3000
+        "reconnectInterval": 3000,
+        "token": "xxHr7LlnhSOaWhYmMIOiQ9IN0HszkZ1K"
       }
     ]
   },

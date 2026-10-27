@@ -50,8 +50,25 @@ class AccountManager:
 
     @staticmethod
     def _find_qq_executable() -> Optional[str]:
-        """从注册表、卸载清单和常见安装目录定位 QQ.exe。"""
+        """从注册表、卸载清单、缓存记录和常见安装目录定位 QQ.exe。"""
+        # 优先读取已缓存的 QQ 路径
+        qq_path_file = os.path.join(NAPCAT_DIR, ".qq_path")
+        if os.path.isfile(qq_path_file):
+            try:
+                with open(qq_path_file, "r", encoding="utf-8") as f:
+                    cached = f.read().strip()
+                    if cached and os.path.isfile(cached):
+                        return os.path.abspath(cached)
+            except OSError:
+                pass
+
         candidates: List[str] = list(QQ_EXECUTABLE_CANDIDATES)
+        candidates.extend([
+            r"D:\工具2\QQ\QQ.exe",
+            r"C:\Program Files\Tencent\QQ\Bin\QQ.exe",
+            r"C:\Program Files\Tencent\QQ\QQ.exe",
+            os.path.expandvars(r"%LocalAppData%\Programs\Tencent\QQNT\QQ.exe"),
+        ])
 
         if sys.platform == "win32":
             try:
@@ -220,6 +237,15 @@ class AccountManager:
                 "message": "当前平台暂不支持通过接口拉起 NapCat",
             }
 
+        # 若是扫码模式且当前已有 QQ 进程在运行，优先通过接口刷新二维码，避免暴力杀死进程
+        if qr_mode and cls.is_process_running():
+            try:
+                res = cls.refresh_qrcode()
+                if res.get("success"):
+                    return res
+            except Exception as e:
+                logger.warning(f"已有实例刷新二维码失败，准备重新拉起: {e}")
+
         qq_executable = cls._find_qq_executable()
         if not qq_executable:
             return {
@@ -374,11 +400,59 @@ class AccountManager:
         }
 
     @classmethod
-    def ensure_default_account_config(cls) -> bool:
-        """应用启动时对齐所有已保存账号的 OneBot 配置，特别是 token。"""
-        aligned = False
-        if not os.path.isdir(CONFIG_DIR):
+    def ensure_template_ws_config(cls) -> bool:
+        """确保基础模板 onebot11.json 具备指向本系统的反向 WebSocket 配置与鉴权 Token。"""
+        try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            template_file = os.path.join(CONFIG_DIR, "onebot11.json")
+            cfg: Dict[str, Any] = {}
+            if os.path.exists(template_file):
+                try:
+                    with open(template_file, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                except Exception:
+                    cfg = {}
+
+            network = cfg.setdefault("network", {})
+            clients = network.setdefault("websocketClients", [])
+            target_ws_url = f"ws://127.0.0.1:{settings.SERVER_PORT}/ws/qq"
+            has_client = False
+            for client in clients:
+                if "/ws/qq" in client.get("url", ""):
+                    client["enable"] = True
+                    client["url"] = target_ws_url
+                    client["token"] = settings.ONEBOT_WS_TOKEN
+                    has_client = True
+                    break
+            if not has_client:
+                clients.append(
+                    {
+                        "enable": True,
+                        "name": "ChatBot-Backend",
+                        "url": target_ws_url,
+                        "reportSelfMessage": False,
+                        "reconnectInterval": 3000,
+                        "messagePostFormat": "array",
+                        "token": settings.ONEBOT_WS_TOKEN,
+                        "debug": False,
+                        "heartInterval": 30000,
+                        "verifyCertificate": True,
+                    }
+                )
+
+            with open(template_file, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"对齐基础 OneBot 模板配置失败: {e}")
             return False
+
+    @classmethod
+    def ensure_default_account_config(cls) -> bool:
+        """应用启动时对齐基础模板与所有已保存账号的 OneBot 配置，特别是 token。"""
+        aligned = cls.ensure_template_ws_config()
+        if not os.path.isdir(CONFIG_DIR):
+            return aligned
         for filename in os.listdir(CONFIG_DIR):
             match = re.fullmatch(r"onebot11_(\d{5,11})\.json", filename)
             if match:
@@ -557,6 +631,36 @@ class AccountManager:
                 "stage": "quick_login",
                 "message": f"快速登录失败: {error}",
             }
+
+
+    @classmethod
+    def refresh_qrcode(cls) -> Dict[str, Any]:
+        """向 NapCat 请求刷新登录二维码，若未启动则尝试重新拉起。"""
+        if not cls.is_process_running():
+            return cls.launch_napcat(qr_mode=True)
+        try:
+            credential = cls._napcat_login()
+            request = urllib.request.Request(
+                "http://127.0.0.1:6099/api/QQLogin/RefreshQRcode",
+                data=b"{}",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {credential}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=4.0) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if payload.get("code", 0) != 0:
+                raise RuntimeError(payload.get("message") or "NapCat 刷新二维码失败")
+            return {
+                "success": True,
+                "message": "二维码已刷新",
+                "qrcode_url": (payload.get("data") or {}).get("qrcodeurl", ""),
+            }
+        except Exception as error:
+            logger.warning(f"向 NapCat 刷新二维码异常，尝试重新拉起: {error}")
+            return cls.launch_napcat(qr_mode=True)
 
 
 account_manager = AccountManager()
