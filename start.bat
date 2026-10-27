@@ -22,6 +22,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
+"%PY_BIN%" scripts\prepare_backend.py
+set "BACKEND_PREFLIGHT=%ERRORLEVEL%"
+if "%BACKEND_PREFLIGHT%"=="1" (
+    echo Backend port check failed. See the message above.
+    pause
+    exit /b 1
+)
+
 :: 1. Patch QQNT loader
 "%PY_BIN%" napcat\patch_loader.py
 
@@ -51,6 +59,11 @@ start "NapCatQQ" cmd /c "cd /d "%~dp0napcat" && call launcher-user.bat || pause"
 :: 4. Automatically open browser after 2 seconds
 echo   Opening web dashboard at http://127.0.0.1:8090 ...
 start "" cmd /c "timeout /t 2 /nobreak >nul && start http://127.0.0.1:8090"
+
+if "%BACKEND_PREFLIGHT%"=="10" (
+    echo Backend is already running and up to date.
+    exit /b 0
+)
 
 :: 5. Launch FastAPI backend in this console
 echo   Starting FastAPI backend...

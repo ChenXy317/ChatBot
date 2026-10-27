@@ -22,6 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 WEB_DIR = Path(__file__).parent / "web"
+API_VERSION = "2026-10-27.2"
 
 
 @asynccontextmanager
@@ -90,6 +91,16 @@ async def protect_dashboard_api(request: Request, call_next):
 async def dashboard_auth_check():
     """前端启动时确认是否需要控制台口令。"""
     return {"required": settings.dashboard_auth_required}
+
+
+@app.get("/api/health")
+async def health_check():
+    """供启动器识别当前 API 版本，避免新旧后端混用。"""
+    return {
+        "app": "qq-chatbot",
+        "api_version": API_VERSION,
+        "status": "ok",
+    }
 
 # 允许跨域
 app.add_middleware(
