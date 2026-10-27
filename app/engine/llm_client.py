@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 from openai import AsyncOpenAI, APIConnectionError, APIStatusError, APITimeoutError
+from app.engine.humanizer import _TIMESTAMP_PATTERN
 from app.engine.think_stripper import ThinkStripper
 
 logger = logging.getLogger(__name__)
@@ -79,15 +80,17 @@ class LLMClient:
             {"role": "system", "content": system_prompt}
         ]
 
-        # 追加历史消息 (带时间戳)
+        # 追加历史消息 (仅用户消息附加时间戳；严禁在 assistant 回复中加时间戳，杜绝反向诱导)
         for msg in history_messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             time_str = msg.get("created_at", "")
             images = msg.get("image_urls") or []
 
-            prefix = f"[{time_str}] " if time_str else ""
-            formatted_text = f"{prefix}{content}"
+            if role == "user" and time_str:
+                formatted_text = f"[{time_str}] {content}"
+            else:
+                formatted_text = content
 
             if images and role == "user":
                 content_list = [{"type": "text", "text": formatted_text}]
@@ -126,8 +129,9 @@ class LLMClient:
             try:
                 response = await self._client.chat.completions.create(**call_kwargs)
                 raw_text = response.choices[0].message.content or ""
-                # 清洗去除所有思维链残留
-                return self.stripper.strip(raw_text)
+                # 清洗去除所有思维链与时间戳残留
+                cleaned = self.stripper.strip(raw_text)
+                return _TIMESTAMP_PATTERN.sub("", cleaned).strip()
 
             except (APIConnectionError, APITimeoutError, APIStatusError) as e:
                 # 若因 extra_body 参数被服务端拒绝，记录端点并降级重试

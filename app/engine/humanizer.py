@@ -10,6 +10,14 @@ from app.models.orm import ChatMessage
 
 logger = logging.getLogger(__name__)
 
+# 匹配并清除各类时间戳前缀 (如 [2026-10-27 22:43:00]、[22:43]、2026-10-27 22:43: 等)
+_TIMESTAMP_PATTERN = re.compile(
+    r"^(\[|\(|【)\s*(?:\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?(?:\s+|\s*T\s*)?)?\d{1,2}:\d{2}(?::\d{2})?\s*(\]|\)|】)\s*[:：\-—]?\s*|"
+    r"^\[\d{4}[-/]\d{1,2}[-/]\d{1,2}\]\s*[:：\-—]?\s*|"
+    r"^\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?(?:\s+|\s*T\s*)\d{1,2}:\d{2}(?::\d{2})?\s*[:：\-—]?\s*",
+    flags=re.MULTILINE,
+)
+
 
 class HumanizerPipeline:
     """拟人化消息处理管道。"""
@@ -18,22 +26,89 @@ class HumanizerPipeline:
         self.typing_speed = typing_speed
 
     def clean_text(self, text: str) -> str:
-        """去除 Markdown 格式符号作为安全兜底。"""
-        # 移除加粗、斜体符号与代码块标记
-        cleaned = re.sub(r"[*_`]", "", text)
-        # 移除行首的标题号与列表符
+        """清洗回复文本：去除首行时间戳与 Markdown 格式标记。"""
+        # 1. 移除时间戳残留
+        cleaned = _TIMESTAMP_PATTERN.sub("", text)
+        # 2. 移除加粗、斜体符号与代码块标记
+        cleaned = re.sub(r"[*_`]", "", cleaned)
+        # 3. 移除行首的标题号与列表符
         cleaned = re.sub(r"^[#\->\s]+", "", cleaned, flags=re.MULTILINE)
         return cleaned.strip()
 
-    def split_sentences(self, text: str) -> List[str]:
-        """按换行符拆分短句。"""
-        lines = text.split("\n")
-        sentences = []
-        for line in lines:
-            cleaned_line = self.clean_text(line)
-            if cleaned_line:
-                sentences.append(cleaned_line)
-        return sentences
+    def split_sentences(self, text: str, max_sentences: int = 3) -> List[str]:
+        """按换行符与标点符号智能拆分短句，保证短消息自然下发。"""
+        if not text:
+            return []
+
+        # 1. 优先按显式换行符切分
+        raw_lines = [line.strip() for line in text.split("\n") if line.strip()]
+        cleaned_lines = []
+        for line in raw_lines:
+            cl = self.clean_text(line)
+            if cl:
+                cleaned_lines.append(cl)
+
+        # 若模型已显式分多行输出，则直接采用
+        if len(cleaned_lines) > 1:
+            return cleaned_lines[:max_sentences]
+
+        if not cleaned_lines:
+            return []
+
+        single = cleaned_lines[0]
+        # 若单行简短，无需强行拆分
+        if len(single) <= 22:
+            return [single]
+
+        # 2. 若模型未换行输出长段落，按句末标点符号智能切分（保留标点）
+        tokens = re.split(r"([。！？!?~～]+|……|\.{2,3})", single)
+        raw_sentences = []
+        current = ""
+        for tok in tokens:
+            if not tok:
+                continue
+            current += tok
+            if re.match(r"^[。！？!?~～]+|……|\.{2,3}$", tok):
+                raw_sentences.append(current.strip())
+                current = ""
+        if current.strip():
+            raw_sentences.append(current.strip())
+
+        # 合并过短碎片，避免过于细碎
+        merged = []
+        for s in raw_sentences:
+            if not s:
+                continue
+            if merged and len(merged[-1]) + len(s) <= 22 and len(merged) < max_sentences:
+                merged[-1] += s
+            else:
+                merged.append(s)
+
+        # 3. 若切分后依然仅有 1 句且较长，尝试按逗号二次切分
+        if len(merged) == 1 and len(merged[0]) > 28:
+            comma_tokens = re.split(r"([，,]+)", merged[0])
+            sub_sentences = []
+            cur = ""
+            for tok in comma_tokens:
+                cur += tok
+                if re.match(r"^[，,]+$", tok):
+                    sub_sentences.append(cur.strip())
+                    cur = ""
+            if cur.strip():
+                sub_sentences.append(cur.strip())
+
+            merged_comma = []
+            for s in sub_sentences:
+                if not s:
+                    continue
+                if merged_comma and len(merged_comma[-1]) + len(s) <= 22 and len(merged_comma) < max_sentences:
+                    merged_comma[-1] += s
+                else:
+                    merged_comma.append(s)
+            if len(merged_comma) > 1:
+                merged = merged_comma
+
+        return merged[:max_sentences]
 
     async def dispatch(
         self,

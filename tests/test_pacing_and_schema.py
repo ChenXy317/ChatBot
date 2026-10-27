@@ -54,6 +54,21 @@ class PacingAndSchemaTests(unittest.IsolatedAsyncioTestCase):
         sentences = pipeline.split_sentences("第一句\n第二句")
         self.assertEqual(sentences, ["第一句", "第二句"])
 
+    def test_clean_text_strips_timestamps(self):
+        pipeline = HumanizerPipeline()
+        self.assertEqual(pipeline.clean_text("[2026-10-27 22:43:00] 哈？在吗"), "哈？在吗")
+        self.assertEqual(pipeline.clean_text("[22:43] 怎么了"), "怎么了")
+        self.assertEqual(pipeline.clean_text("【2026/10/27 22:43】 好的"), "好的")
+        self.assertEqual(pipeline.clean_text("2026-10-27 22:43: 收到"), "收到")
+        self.assertEqual(pipeline.clean_text("今天 10:30 开会"), "今天 10:30 开会")
+
+    def test_split_sentences_long_single_line(self):
+        pipeline = HumanizerPipeline()
+        res = pipeline.split_sentences("哈？你居然敢不理本小姐，找死吗？快点给我道歉！")
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res[0], "哈？你居然敢不理本小姐，找死吗？")
+        self.assertEqual(res[1], "快点给我道歉！")
+
 
 if __name__ == "__main__":
     unittest.main()
