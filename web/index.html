@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <div class="auth-gate" id="authGate" hidden>
+    <form class="auth-card" id="authForm">
+      <h2>连接本地控制台</h2>
+      <p>输入启动配置中的 DASHBOARD_TOKEN 后继续。</p>
+      <label for="dashboardToken">控制台口令</label>
+      <input type="password" id="dashboardToken" autocomplete="current-password" required>
+      <p class="auth-error" id="authError" hidden></p>
+      <button class="btn btn-primary" type="submit">连接</button>
+    </form>
+  </div>
   <!-- 页面根容器 -->
   <div class="app-container">
     <!-- 顶部导航栏 -->
@@ -248,6 +258,10 @@
                 <span class="overview-label">QQ 进程状态</span>
                 <span class="overview-val" id="overviewProcessStatus">检测中...</span>
               </div>
+              <div class="overview-item">
+                <span class="overview-label">登录阶段</span>
+                <span class="overview-val" id="overviewLoginPhase">检测中...</span>
+              </div>
             </div>
           </div>
 
@@ -424,7 +438,7 @@
           <div class="modal-body">
             <div class="field-item">
               <label for="new_user_id">好友 QQ 号码</label>
-              <input type="number" id="new_user_id" required placeholder="输入 5~11 位 QQ 数字">
+              <input type="number" id="new_user_id" required min="10000" max="99999999999" inputmode="numeric" placeholder="输入 5~11 位 QQ 数字">
             </div>
             <div class="field-item">
               <label for="new_remark">备注名称 (可选)</label>
@@ -451,6 +465,7 @@
           <button class="modal-close" id="closeQrModal" title="关闭">&times;</button>
         </div>
         <div class="modal-body text-center">
+          <div class="qr-status-line" id="qrLoginStatus">正在等待 NapCat 登录服务...</div>
           <div class="qr-container" id="qrContainer">
             <div class="qr-placeholder" id="qrLoading">
               <div class="spinner"></div>
@@ -458,6 +473,7 @@
             </div>
             <img id="qrImage" src="" alt="登录二维码" style="display: none;">
           </div>
+          <p class="qr-error" id="qrErrorMessage" style="display: none;"></p>
           <p class="qr-tip">请使用手机 QQ 扫描上方二维码授权登录</p>
           <p class="qr-sub-tip">登录成功后 NapCat 将自动连接系统并关闭弹窗</p>
         </div>

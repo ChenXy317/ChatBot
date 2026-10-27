@@ -14,6 +14,14 @@ echo ===================================================
 echo   Starting QQ ChatBot System...
 echo ===================================================
 
+:: Start the optional per-user database before the backend
+"%PY_BIN%" scripts\start_local_db.py
+if errorlevel 1 (
+    echo Local database startup failed.
+    pause
+    exit /b 1
+)
+
 :: 1. Patch QQNT loader
 "%PY_BIN%" napcat\patch_loader.py
 

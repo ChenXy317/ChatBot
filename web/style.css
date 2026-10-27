@@ -55,6 +55,60 @@ body {
   min-height: 100vh;
 }
 
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(9, 10, 12, 0.94);
+}
+
+.auth-gate[hidden] {
+  display: none;
+}
+
+.auth-card {
+  width: min(100%, 360px);
+  padding: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+
+.auth-card h2 {
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.auth-card > p {
+  margin-bottom: 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.auth-card label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.auth-card input {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.auth-card .btn {
+  width: 100%;
+}
+
+.auth-error {
+  color: #fca5a5 !important;
+}
+
 /* 优雅暗色滚动条 */
 ::-webkit-scrollbar {
   width: 6px;
@@ -1137,4 +1191,136 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .qr-sub-tip {
   font-size: 11px;
   color: var(--text-tertiary);
+}
+
+.qr-status-line {
+  min-height: 20px;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.qr-error {
+  margin: 0 auto 8px;
+  color: #fca5a5;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 窄屏下优先保证操作区可用，避免标题和按钮被逐字挤压。 */
+@media (max-width: 760px) {
+  .app-container {
+    width: 100%;
+    padding: 18px 12px 40px;
+  }
+
+  .app-header {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .header-actions {
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .connection-badge {
+    padding: 6px 8px;
+  }
+
+  .nav-tabs {
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: thin;
+  }
+
+  .nav-item {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .card-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .filter-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .data-table {
+    min-width: 760px;
+  }
+
+  .quick-launch-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quick-launch-bar button {
+    width: 100%;
+  }
+
+  .chat-viewport,
+  .terminal-container {
+    height: 420px;
+    padding: 16px;
+  }
+
+  .message-row {
+    max-width: 88%;
+  }
+
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header {
+    flex-direction: column;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .header-divider {
+    display: none;
+  }
+
+  .account-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-card {
+    border-radius: 8px;
+  }
+
+  .card-body {
+    padding: 18px 16px;
+  }
+
+  .card-header {
+    padding: 18px 16px;
+  }
+
+  .action-btns {
+    width: max-content;
+  }
 }

@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import WebSocket, WebSocketDisconnect
+from app.core.config import settings
 from app.engine.debouncer import MessageDebouncer
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,18 @@ class OneBotGateway:
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         """处理来自 NapCat 的反向 WebSocket 客户端连接。"""
+        authorization = websocket.headers.get("authorization", "").strip()
+        if authorization.lower().startswith("bearer "):
+            supplied_token = authorization[7:].strip()
+        elif authorization.lower().startswith("token "):
+            supplied_token = authorization[6:].strip()
+        else:
+            supplied_token = authorization
+        if supplied_token != settings.ONEBOT_WS_TOKEN:
+            await websocket.close(code=1008, reason="Unauthorized")
+            logger.warning("拒绝未通过 OneBot WebSocket token 校验的连接")
+            return
+
         await websocket.accept()
         self.active_socket = websocket
         

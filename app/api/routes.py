@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,8 @@ from app.schemas.common import (
     AccountItem,
     AccountLaunchRequest,
     AccountListResponse,
+    AccountLoginStatus,
+    AccountQuickLoginRequest,
     AccountSetDefaultRequest,
     AccountSwitchRequest,
     BotConfigRead,
@@ -182,6 +184,18 @@ async def list_accounts():
     return account_manager.list_accounts()
 
 
+@router.get("/accounts/login-status", response_model=AccountLoginStatus)
+async def get_account_login_status():
+    """获取 NapCat 当前登录阶段，二维码只通过本地控制台转发。"""
+    return account_manager.get_napcat_login_status()
+
+
+@router.post("/accounts/quick-login")
+async def quick_login_account(payload: AccountQuickLoginRequest):
+    """在 NapCat 已启动时尝试免密快速登录。"""
+    return account_manager.quick_login(payload.qq)
+
+
 @router.post("/accounts/switch")
 async def switch_account(payload: AccountSwitchRequest):
     """切换至指定账号并可选自动拉起 NapCat。"""
@@ -235,10 +249,10 @@ async def delete_account(qq: str):
 @router.get("/accounts/qrcode")
 async def get_qrcode():
     """获取扫码登录二维码图片。"""
-    qr_path = account_manager.get_qrcode_path()
-    if not qr_path:
+    image = account_manager.get_qrcode_image()
+    if not image:
         raise HTTPException(status_code=404, detail="未检测到有效二维码")
-    return FileResponse(qr_path, media_type="image/png")
+    return Response(content=image, media_type="image/png")
 
 
 # ── 系统状态 ──

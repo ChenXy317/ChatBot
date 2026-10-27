@@ -3,6 +3,92 @@
  */
 
 document.addEventListener("DOMContentLoaded", () => {
+  const authGate = document.getElementById("authGate");
+  const authForm = document.getElementById("authForm");
+  const dashboardTokenInput = document.getElementById("dashboardToken");
+  const authError = document.getElementById("authError");
+
+  function getDashboardToken() {
+    return sessionStorage.getItem("chatbot_dashboard_token") || "";
+  }
+
+  function showAuthGate(message = "") {
+    if (authGate) authGate.hidden = false;
+    if (authError) {
+      authError.textContent = message;
+      authError.hidden = !message;
+    }
+  }
+
+  function hideAuthGate() {
+    if (authGate) authGate.hidden = true;
+    if (dashboardTokenInput) dashboardTokenInput.value = "";
+  }
+
+  async function apiFetch(url, options = {}, retried = false) {
+    const headers = new Headers(options.headers || {});
+    const token = getDashboardToken();
+    if (token) headers.set("X-Dashboard-Token", token);
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401 && !retried) {
+      sessionStorage.removeItem("chatbot_dashboard_token");
+      showAuthGate("请输入正确的控制台口令");
+      throw new Error("需要控制台口令");
+    }
+    return response;
+  }
+
+  if (authForm) {
+    authForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const token = dashboardTokenInput.value.trim();
+      try {
+        const res = await fetch("/api/auth/check", {
+          headers: token ? { "X-Dashboard-Token": token } : {},
+        });
+        if (!res.ok) throw new Error(res.status === 401 ? "口令不正确" : "服务暂不可用");
+        const result = await res.json();
+        if (result.required) {
+          sessionStorage.setItem("chatbot_dashboard_token", token);
+        } else {
+          sessionStorage.removeItem("chatbot_dashboard_token");
+        }
+        hideAuthGate();
+        loadConfig();
+        pollStatus();
+      } catch (error) {
+        showAuthGate(error.message);
+      }
+    });
+  }
+
+  async function initializeDashboard() {
+    const token = getDashboardToken();
+    try {
+      const res = await fetch("/api/auth/check", {
+        headers: token ? { "X-Dashboard-Token": token } : {},
+      });
+      if (res.status === 401) {
+        sessionStorage.removeItem("chatbot_dashboard_token");
+        showAuthGate(token ? "控制台口令已失效，请重新输入" : "");
+        return;
+      }
+      if (!res.ok) throw new Error("无法连接本地控制台");
+      const result = await res.json();
+      if (result.required && !token) {
+        showAuthGate();
+        return;
+      }
+      hideAuthGate();
+      loadConfig();
+      pollStatus();
+      loadAccounts();
+      setInterval(pollStatus, 4000);
+    } catch (error) {
+      showAuthGate(error.message);
+    }
+  }
+
   // ── Toast 通知系统 ──
   const toastContainer = document.getElementById("toastContainer");
 
@@ -63,7 +149,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadConfig() {
     try {
-      const res = await fetch("/api/config");
+      const res = await apiFetch("/api/config");
       if (!res.ok) throw new Error("获取配置失败");
       const data = await res.json();
 
@@ -108,7 +194,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     try {
-      const res = await fetch("/api/config", {
+      const res = await apiFetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -125,11 +211,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // 全局总开关切换
   masterSwitch.addEventListener("change", async () => {
     try {
-      await fetch("/api/config", {
+      const res = await apiFetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_enabled: masterSwitch.checked }),
       });
+      if (!res.ok) throw new Error("切换接口异常");
       showToast(masterSwitch.checked ? "已开启自动接管" : "已暂停自动接管", "info");
     } catch (err) {
       showToast("切换接管状态失败", "error");
@@ -158,7 +245,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     try {
-      const res = await fetch("/api/config/test", {
+      const res = await apiFetch("/api/config/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -194,7 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadWhitelist() {
     try {
-      const res = await fetch("/api/whitelist");
+      const res = await apiFetch("/api/whitelist");
       const list = await res.json();
       if (!list.length) {
         whitelistTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">当前白名单列表为空，请添加允许接管的好友</td></tr>`;
@@ -227,11 +314,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   window.toggleWhitelistUser = async (userId, enabled) => {
     try {
-      await fetch(`/api/whitelist/${userId}`, {
+      const res = await apiFetch(`/api/whitelist/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_enabled: enabled }),
       });
+      if (!res.ok) throw new Error("操作接口异常");
       showToast(`已${enabled ? "启用" : "停用"}对 ${userId} 的自动接管`, "info");
     } catch (err) {
       showToast("操作失败: " + err.message, "error");
@@ -241,7 +329,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   window.deleteWhitelistUser = async userId => {
     try {
-      await fetch(`/api/whitelist/${userId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/whitelist/${userId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("删除接口异常");
       showToast(`已从白名单移除好友 ${userId}`, "success");
       loadWhitelist();
     } catch (err) {
@@ -264,7 +353,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     try {
-      const res = await fetch("/api/whitelist", {
+      const res = await apiFetch("/api/whitelist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -292,7 +381,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadHistoryUsers() {
     try {
-      const res = await fetch("/api/whitelist");
+      const res = await apiFetch("/api/whitelist");
       const list = await res.json();
       const currentVal = historyUserSelect.value;
       historyUserSelect.innerHTML = `<option value="">选择白名单好友</option>` +
@@ -316,7 +405,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const res = await fetch(`/api/messages/${userId}?limit=50`);
+      const res = await apiFetch(`/api/messages/${userId}?limit=50`);
       const messages = await res.json();
       if (!messages.length) {
         chatContainer.innerHTML = `<div class="empty-state"><span>该好友暂无聊天消息记录</span></div>`;
@@ -364,7 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadLogs() {
     try {
-      const res = await fetch("/api/logs?limit=80");
+      const res = await apiFetch("/api/logs?limit=80");
       const logs = await res.json();
       if (!logs.length) {
         logViewer.innerHTML = `<div class="log-empty">暂无系统事件记录</div>`;
@@ -400,6 +489,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const overviewCurrentQQ = document.getElementById("overviewCurrentQQ");
   const overviewDefaultQQ = document.getElementById("overviewDefaultQQ");
   const overviewProcessStatus = document.getElementById("overviewProcessStatus");
+  const overviewLoginPhase = document.getElementById("overviewLoginPhase");
   const accountsTableBody = document.getElementById("accountsTableBody");
   const refreshAccountsBtn = document.getElementById("refreshAccountsBtn");
   const stopNapcatBtn = document.getElementById("stopNapcatBtn");
@@ -416,11 +506,82 @@ document.addEventListener("DOMContentLoaded", () => {
   const qrLoading = document.getElementById("qrLoading");
   const qrImage = document.getElementById("qrImage");
   const qrStatusTip = document.getElementById("qrStatusTip");
+  const qrLoginStatus = document.getElementById("qrLoginStatus");
+  const qrErrorMessage = document.getElementById("qrErrorMessage");
   let qrPollTimer = null;
+  let qrObjectUrl = null;
+
+  const loginPhaseLabels = {
+    offline: "离线",
+    generating_qrcode: "正在生成二维码",
+    waiting_qrcode: "等待扫码",
+    qrcode_scanned: "二维码已扫描，等待确认",
+    initializing: "正在初始化账号",
+    ready: "登录成功",
+  };
+
+  function renderLoginState(status) {
+    const phase = status.login_phase || "";
+    const label = loginPhaseLabels[phase] || (status.is_login ? "登录成功" : "等待 QR 登录服务");
+    if (overviewLoginPhase) overviewLoginPhase.textContent = label;
+    if (qrLoginStatus) qrLoginStatus.textContent = label;
+    if (qrErrorMessage) {
+      qrErrorMessage.textContent = status.login_error || "";
+      qrErrorMessage.style.display = status.login_error ? "block" : "none";
+    }
+    return label;
+  }
+
+  async function refreshLoginStatus() {
+    const res = await apiFetch("/api/accounts/login-status", { cache: "no-store" });
+    if (!res.ok) throw new Error("登录状态接口请求失败");
+    const status = await res.json();
+    renderLoginState(status);
+    return status;
+  }
+
+  async function pollQrLogin() {
+    try {
+      const status = await refreshLoginStatus();
+      if (status.is_login) {
+        closeQrModalFunc();
+        showToast("QQ 登录成功，正在接入控制台", "success");
+        loadAccounts();
+        pollStatus();
+        return true;
+      }
+      if (status.qrcode_url && qrImage && !qrImage.src.includes("blob:")) {
+        await loadLoginQr(status);
+      }
+      if (qrStatusTip && !status.qrcode_url) {
+        qrStatusTip.textContent = "NapCat 正在生成登录二维码...";
+      }
+    } catch (err) {
+      if (qrErrorMessage) {
+        qrErrorMessage.textContent = `登录服务暂时不可用，正在等待 NapCat: ${err.message}`;
+        qrErrorMessage.style.display = "block";
+      }
+    }
+    return false;
+  }
+
+  async function loadLoginQr(status) {
+    const qrUrl = status && status.qrcode_url;
+    if (!qrUrl || !qrImage) return false;
+    const res = await apiFetch(`/api/accounts/qrcode?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`二维码请求失败 (${res.status})`);
+    const blob = await res.blob();
+    if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl);
+    qrObjectUrl = URL.createObjectURL(blob);
+    qrImage.src = qrObjectUrl;
+    qrImage.style.display = "block";
+    if (qrLoading) qrLoading.style.display = "none";
+    return true;
+  }
 
   async function loadAccounts() {
     try {
-      const res = await fetch("/api/accounts");
+      const res = await apiFetch("/api/accounts");
       if (!res.ok) throw new Error("获取账号列表失败");
       const data = await res.json();
 
@@ -437,6 +598,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (overviewCurrentQQ) overviewCurrentQQ.textContent = data.online_qq ? `${curNick}${data.online_qq}` : "-";
       if (overviewDefaultQQ) overviewDefaultQQ.textContent = data.default_account || "-";
       if (overviewProcessStatus) overviewProcessStatus.textContent = data.is_process_running ? "运行中 (QQ.exe)" : "已停止";
+      renderLoginState(data.napcat_status || {});
 
       // 渲染账号表格
       if (!accountsTableBody) return;
@@ -493,7 +655,7 @@ document.addEventListener("DOMContentLoaded", () => {
           btn.disabled = true;
           showToast(`正在切换至账号 ${qq}...`, "info");
           try {
-            const resp = await fetch("/api/accounts/switch", {
+            const resp = await apiFetch("/api/accounts/switch", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ qq, auto_start: true }),
@@ -518,11 +680,12 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.addEventListener("click", async () => {
           const qq = btn.getAttribute("data-qq");
           try {
-            const resp = await fetch("/api/accounts/set-default", {
+            const resp = await apiFetch("/api/accounts/set-default", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ qq }),
             });
+        if (!resp.ok) throw new Error("设置默认账号接口异常");
             const rData = await resp.json();
             if (rData.success) {
               showToast(`已设为默认账号: ${qq}`, "success");
@@ -539,7 +702,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const qq = btn.getAttribute("data-qq");
           if (!confirm(`确定要移除账号 ${qq} 的本地配置文件吗？`)) return;
           try {
-            const resp = await fetch(`/api/accounts/${qq}`, { method: "DELETE" });
+            const resp = await apiFetch(`/api/accounts/${qq}`, { method: "DELETE" });
             const rData = await resp.json();
             if (rData.success) {
               showToast(`已移除账号 ${qq}`, "info");
@@ -572,7 +735,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!confirm("确定要停止当前运行的 NapCat / QQ 进程吗？")) return;
       stopNapcatBtn.disabled = true;
       try {
-        const resp = await fetch("/api/accounts/stop", { method: "POST" });
+        const resp = await apiFetch("/api/accounts/stop", { method: "POST" });
         const data = await resp.json();
         showToast(data.message || "已发送停止指令", "info");
       } catch (e) {
@@ -594,7 +757,7 @@ document.addEventListener("DOMContentLoaded", () => {
       quickLaunchSubmitBtn.disabled = true;
       showToast(`正在启动账号 ${qq}...`, "info");
       try {
-        const resp = await fetch("/api/accounts/switch", {
+        const resp = await apiFetch("/api/accounts/switch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ qq, auto_start: true }),
@@ -623,15 +786,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if (qrImage) qrImage.style.display = "none";
     if (qrLoading) qrLoading.style.display = "flex";
     if (qrStatusTip) qrStatusTip.textContent = "正在拉起 NapCat 扫码服务...";
+    if (qrErrorMessage) {
+      qrErrorMessage.textContent = "";
+      qrErrorMessage.style.display = "none";
+    }
 
     // 触发后端以二维码模式启动
-    fetch("/api/accounts/launch", {
+    apiFetch("/api/accounts/launch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ qr_mode: true }),
     }).catch(console.error);
 
     startQrPolling();
+    pollQrLogin();
   }
 
   function closeQrModalFunc() {
@@ -639,6 +807,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (qrPollTimer) {
       clearInterval(qrPollTimer);
       qrPollTimer = null;
+    }
+    if (qrObjectUrl) {
+      URL.revokeObjectURL(qrObjectUrl);
+      qrObjectUrl = null;
     }
   }
 
@@ -648,32 +820,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     qrPollTimer = setInterval(async () => {
       attempts++;
-      // 检测是否已经连接网关成功
       try {
-        const statusRes = await fetch("/api/status");
-        if (statusRes.ok) {
-          const sData = await statusRes.json();
-          if (sData.napcat_connected) {
-            closeQrModalFunc();
-            showToast("扫码登录成功！已接管当前 QQ 账号", "success");
-            loadAccounts();
-            pollStatus();
-            return;
-          }
-        }
-      } catch (_) {}
-
-      // 获取二维码图片
-      try {
-        const qrRes = await fetch(`/api/accounts/qrcode?t=${Date.now()}`);
-        if (qrRes.ok) {
-          const blob = await qrRes.blob();
-          if (qrImage) {
-            qrImage.src = URL.createObjectURL(blob);
-            qrImage.style.display = "block";
-          }
-          if (qrLoading) qrLoading.style.display = "none";
-        }
+        await pollQrLogin();
       } catch (_) {}
 
       if (attempts > 120) {
@@ -699,7 +847,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function pollStatus() {
     try {
-      const res = await fetch("/api/status");
+      const res = await apiFetch("/api/status");
       if (res.ok) {
         const data = await res.json();
         if (data.napcat_connected) {
@@ -745,7 +893,5 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // 启动时初始化
-  loadConfig();
-  pollStatus();
-  setInterval(pollStatus, 4000);
+  initializeDashboard();
 });

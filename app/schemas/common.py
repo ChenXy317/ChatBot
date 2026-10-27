@@ -119,29 +119,44 @@ class AccountItem(BaseModel):
     last_active: str
 
 
+class AccountLoginStatus(BaseModel):
+    """NapCat 登录阶段与二维码状态。"""
+    available: bool
+    is_login: bool
+    login_phase: str
+    login_error: str
+    qrcode_url: str
+
+
 class AccountListResponse(BaseModel):
     """账号列表与运行状态响应。"""
     online_qq: Optional[str] = None
     online_nickname: Optional[str] = None
     is_connected: bool
     is_process_running: bool
+    napcat_status: AccountLoginStatus
     default_account: Optional[str] = None
     accounts: List[AccountItem]
 
 
 class AccountSwitchRequest(BaseModel):
     """切换账号请求。"""
-    qq: str = Field(..., description="目标 QQ 账号")
+    qq: str = Field(..., pattern=r"^[1-9]\d{4,10}$", description="目标 QQ 账号")
     auto_start: bool = Field(default=True, description="是否立即拉起启动")
+
+
+class AccountQuickLoginRequest(BaseModel):
+    """通过 QQ 号触发 NapCat 快速登录。"""
+    qq: str = Field(..., pattern=r"^[1-9]\d{4,10}$", description="目标 QQ 账号")
 
 
 class AccountSetDefaultRequest(BaseModel):
     """设定默认账号请求。"""
-    qq: str = Field(..., description="默认 QQ 账号")
+    qq: str = Field(..., pattern=r"^[1-9]\d{4,10}$", description="默认 QQ 账号")
 
 
 class AccountLaunchRequest(BaseModel):
     """拉起 NapCat 实例请求。"""
-    qq: Optional[str] = None
+    qq: Optional[str] = Field(default=None, pattern=r"^[1-9]\d{4,10}$")
     qr_mode: bool = False
 
