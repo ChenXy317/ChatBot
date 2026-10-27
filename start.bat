@@ -32,6 +32,9 @@ if "%BACKEND_PREFLIGHT%"=="1" (
 
 :: 1. Patch QQNT loader
 "%PY_BIN%" napcat\patch_loader.py
+if exist "napcat\.qq_path" (
+    set /p QQ_PATH=<"napcat\.qq_path"
+)
 
 :: 2. Determine target account
 set "QQ_ARG=%~1"
