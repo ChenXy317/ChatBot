@@ -54,14 +54,17 @@ class HumanizerPipeline:
             except Exception as e:
                 logger.debug(f"更新正在输入状态异常: {e}")
 
-            # 动态计算打字耗时（首句略长以模拟理解）
-            base_delay = 1.0 if idx == 0 else 0.5
-            char_delay = len(sentence) * self.typing_speed
-            total_delay = base_delay + char_delay + random.uniform(0.2, 0.6)
+            # 动态计算打字耗时（设为 0 时立即发送，跳过等待）
+            if self.typing_speed <= 0:
+                sleep_duration = 0.0
+            else:
+                base_delay = 1.0 if idx == 0 else 0.5
+                char_delay = len(sentence) * self.typing_speed
+                total_delay = base_delay + char_delay + random.uniform(0.2, 0.6)
+                sleep_duration = min(max(total_delay, 0.5), 8.0)
 
-            # 限制单句等待上限，避免对方等待过久
-            sleep_duration = min(max(total_delay, 1.0), 8.0)
-            await asyncio.sleep(sleep_duration)
+            if sleep_duration > 0:
+                await asyncio.sleep(sleep_duration)
 
             # 发送私聊消息
             await send_message_fn(user_id, sentence)

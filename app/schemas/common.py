@@ -15,8 +15,8 @@ class BotConfigBase(BaseModel):
     temperature: float = Field(default=0.8, ge=0.0, le=2.0, description="采样温度")
     top_p: float = Field(default=0.9, ge=0.0, le=1.0, description="核采样比例")
     max_tokens: int = Field(default=2048, ge=64, le=16384, description="最大生成 Token 数量")
-    debounce_delay: float = Field(default=1.5, ge=0.5, le=10.0, description="消息防抖缓冲秒数")
-    typing_speed: float = Field(default=0.15, ge=0.01, le=1.0, description="单字拟人输入延迟秒数")
+    debounce_delay: float = Field(default=1.5, ge=0.0, le=10.0, description="消息防抖缓冲秒数")
+    typing_speed: float = Field(default=0.15, ge=0.0, le=1.0, description="单字拟人输入延迟秒数")
     is_enabled: bool = Field(default=True, description="是否开启自动接管")
 
 
@@ -40,8 +40,8 @@ class BotConfigUpdate(BaseModel):
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
     top_p: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     max_tokens: Optional[int] = Field(default=None, ge=64, le=16384)
-    debounce_delay: Optional[float] = Field(default=None, ge=0.5, le=10.0)
-    typing_speed: Optional[float] = Field(default=None, ge=0.01, le=1.0)
+    debounce_delay: Optional[float] = Field(default=None, ge=0.0, le=10.0)
+    typing_speed: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     is_enabled: Optional[bool] = None
 
 

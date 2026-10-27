@@ -154,8 +154,8 @@
                   <span>消息防抖缓冲 (Debounce)</span>
                   <span class="val-pill" id="debounceVal">1.5s</span>
                 </label>
-                <input type="number" id="debounce_delay" name="debounce_delay" step="0.1" min="0.5" max="10.0" value="1.5">
-                <span class="field-tip">收到新消息后静默等待时长；期间若用户再次发信则重置并打断旧回复</span>
+                <input type="number" id="debounce_delay" name="debounce_delay" step="0.1" min="0" max="10.0" value="1.5">
+                <span class="field-tip">收到新消息后静默等待时长；设为 0 表示不等待立即触发回复</span>
               </div>
 
               <div class="field-item">
@@ -163,8 +163,8 @@
                   <span>单字输入耗时 (Typing Pacing)</span>
                   <span class="val-pill" id="typingVal">0.15s</span>
                 </label>
-                <input type="number" id="typing_speed" name="typing_speed" step="0.01" min="0.01" max="1.0" value="0.15">
-                <span class="field-tip">模拟真人击键速度；发送每句前向 QQ 广播“正在输入中”</span>
+                <input type="number" id="typing_speed" name="typing_speed" step="0.01" min="0" max="1.0" value="0.15">
+                <span class="field-tip">模拟真人击键速度；设为 0 表示生成完毕后立即秒发，跳过打字等待</span>
               </div>
 
               <div class="field-item">

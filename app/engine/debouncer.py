@@ -98,7 +98,8 @@ class MessageDebouncer:
             logger.debug(f"读取防抖时间失败，使用默认 1.5 秒: {e}")
 
         try:
-            await asyncio.sleep(debounce_delay)
+            if debounce_delay > 0:
+                await asyncio.sleep(debounce_delay)
             # 倒计时结束且中途无新消息打断，开始执行大模型调用
             state = self.get_session(user_id)
             state.generation_task = asyncio.create_task(
