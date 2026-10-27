@@ -19,15 +19,22 @@ if "%QQ_ARG%"=="" (
 cd /d "%~dp0napcat"
 
 echo ===================================================
-if not "%QQ_ARG%"=="" (
-    echo   Starting NapCatQQ (Quick Login: %QQ_ARG%)...
-    set "LAUNCH_CMD=call launcher-user.bat -q %QQ_ARG%"
-) else (
-    echo   Starting NapCatQQ (QR Code Mode)...
-    set "LAUNCH_CMD=call launcher-user.bat"
-)
+echo   Starting NapCatQQ...
 echo   WebUI: http://127.0.0.1:6099/webui
 echo ===================================================
 
-%LAUNCH_CMD%
+if "%QQ_ARG%"=="" goto :qr_mode
+if /i "%QQ_ARG%"=="qr" goto :qr_mode
+if /i "%QQ_ARG%"=="scan" goto :qr_mode
+if /i "%QQ_ARG%"=="-qr" goto :qr_mode
+
+echo   Using quick login with QQ: %QQ_ARG%
+call launcher-user.bat -q %QQ_ARG%
+goto :done
+
+:qr_mode
+echo   Starting with QR code login...
+call launcher-user.bat
+
+:done
 pause
