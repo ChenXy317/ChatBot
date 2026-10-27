@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.core.database import async_session_factory
 from app.engine.humanizer import HumanizerPipeline
 from app.engine.llm_client import LLMClient
+from app.engine.prompt_builder import compose_system_prompt
 from app.models.orm import BotConfig, ChatMessage, SystemLog, WhitelistUser
 
 logger = logging.getLogger(__name__)
@@ -140,14 +141,13 @@ class MessageDebouncer:
                 return
             self._set_state(f"llm_started:{user_id}")
 
-            # 加载历史上下文（取最近 20 条，按时间正序）
+            # 加载该好友的全部历史，按消息写入顺序正序发送给模型。
             msg_res = await session.execute(
                 select(ChatMessage)
                 .where(ChatMessage.user_id == user_id)
-                .order_by(ChatMessage.id.desc())
-                .limit(20)
+                .order_by(ChatMessage.id.asc())
             )
-            raw_history = list(reversed(msg_res.scalars().all()))
+            raw_history = list(msg_res.scalars().all())
 
             # 格式化历史消息
             history_list = []
@@ -159,8 +159,12 @@ class MessageDebouncer:
                     "created_at": h.created_at.strftime("%Y-%m-%d %H:%M:%S") if h.created_at else "",
                 })
 
-            # 优先使用专属 Prompt，否则使用全局 Prompt
-            effective_prompt = wl_user.custom_prompt or cfg.system_prompt
+            # 角色设定、好友设定、输出设定按固定顺序拼接，块间保留空行。
+            effective_prompt = compose_system_prompt(
+                cfg.role_prompt,
+                wl_user.custom_prompt,
+                cfg.output_prompt,
+            )
 
             # 构建 LLM 客户端
             llm = LLMClient(

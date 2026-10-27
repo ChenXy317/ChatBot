@@ -3,6 +3,7 @@
 from datetime import datetime
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, Integer, String, Text, JSON
 from sqlalchemy.orm import declarative_base
+from app.engine.prompt_builder import DEFAULT_OUTPUT_PROMPT, DEFAULT_ROLE_PROMPT
 
 Base = declarative_base()
 
@@ -15,20 +16,8 @@ class BotConfig(Base):
     api_base = Column(String(255), default="https://api.deepseek.com/v1", nullable=False)
     api_key = Column(String(255), default="", nullable=False)
     model = Column(String(128), default="deepseek-chat", nullable=False)
-    system_prompt = Column(
-        Text,
-        default=(
-            "你现在正在 QQ 上与好友私聊。\n"
-            "【行为规范】\n"
-            "1. 语言口语化、随性自然，像日常真人聊天。\n"
-            "2. 严禁使用任何 Markdown 格式（严禁出现 **加粗**、标题、序号列表或代码块）。\n"
-            "3. 按照真人打字习惯，将回复拆分成 1~3 条短消息，每条短消息单独成行（用换行符分隔）。\n"
-            "4. 单条短消息控制在 5~30 个字以内，切勿长篇大论。\n"
-            "5. 严禁暴露自己是 AI 或语言模型。\n"
-            "6. 严禁输出任何思考过程或思维链（严禁出现 <think>、<thought> 等思考标签），必须直接输出真实对话。"
-        ),
-        nullable=False
-    )
+    role_prompt = Column(Text, default=DEFAULT_ROLE_PROMPT, nullable=False)
+    output_prompt = Column(Text, default=DEFAULT_OUTPUT_PROMPT, nullable=False)
     temperature = Column(Float, default=0.8, nullable=False)
     top_p = Column(Float, default=0.9, nullable=False)
     max_tokens = Column(Integer, default=2048, nullable=False)

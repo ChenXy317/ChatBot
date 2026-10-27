@@ -23,7 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 WEB_DIR = Path(__file__).parent / "web"
-API_VERSION = "2026-10-27.7"
+API_VERSION = "2026-10-27.8"
 
 
 @asynccontextmanager

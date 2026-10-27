@@ -2,9 +2,14 @@
 
 import logging
 from typing import AsyncGenerator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from app.core.config import settings
+from app.engine.prompt_builder import (
+    DEFAULT_OUTPUT_PROMPT,
+    DEFAULT_ROLE_PROMPT,
+    LEGACY_DEFAULT_SYSTEM_PROMPT,
+)
 from app.models.orm import Base, BotConfig
 
 logger = logging.getLogger(__name__)
@@ -39,6 +44,7 @@ async def init_db() -> None:
     """初始化数据库表结构与默认配置。"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _upgrade_bot_config_schema(conn)
 
     async with async_session_factory() as session:
         result = await session.execute(select(BotConfig).order_by(BotConfig.id))
@@ -53,3 +59,60 @@ async def init_db() -> None:
             await session.execute(delete(BotConfig).where(BotConfig.id != keep_id))
             await session.commit()
             logger.warning("检测到多条机器人配置，已清理重复记录，保留 ID=%s", keep_id)
+
+
+async def _upgrade_bot_config_schema(conn) -> None:
+    """兼容旧库：把 system_prompt 拆成 role_prompt 与 output_prompt。"""
+    columns = await conn.run_sync(
+        lambda sync_conn: {column["name"] for column in inspect(sync_conn).get_columns("bot_config")}
+    )
+    if "role_prompt" not in columns:
+        await conn.execute(text("ALTER TABLE bot_config ADD COLUMN role_prompt TEXT NULL"))
+    if "output_prompt" not in columns:
+        await conn.execute(text("ALTER TABLE bot_config ADD COLUMN output_prompt TEXT NULL"))
+    if "system_prompt" in columns:
+        legacy_result = await conn.execute(
+            text("SELECT id, system_prompt, role_prompt, output_prompt FROM bot_config")
+        )
+        for row in legacy_result.mappings():
+            system_prompt = (row["system_prompt"] or "").strip()
+            role_prompt = (row["role_prompt"] or "").strip()
+            output_prompt = (row["output_prompt"] or "").strip()
+            if system_prompt and not role_prompt and not output_prompt:
+                if system_prompt == LEGACY_DEFAULT_SYSTEM_PROMPT.strip():
+                    role_prompt = DEFAULT_ROLE_PROMPT
+                    output_prompt = DEFAULT_OUTPUT_PROMPT
+                else:
+                    role_prompt = system_prompt
+            await conn.execute(
+                text(
+                    "UPDATE bot_config SET role_prompt = :role_prompt, "
+                    "output_prompt = :output_prompt WHERE id = :id"
+                ),
+                {
+                    "id": row["id"],
+                    "role_prompt": role_prompt,
+                    "output_prompt": output_prompt,
+                },
+            )
+    await conn.execute(
+        text(
+            "UPDATE bot_config SET "
+            "role_prompt = COALESCE(NULLIF(role_prompt, ''), :role_prompt), "
+            "output_prompt = COALESCE(NULLIF(output_prompt, ''), :output_prompt)"
+        ),
+        {
+            "role_prompt": DEFAULT_ROLE_PROMPT,
+            "output_prompt": DEFAULT_OUTPUT_PROMPT,
+        },
+    )
+    await conn.execute(
+        text(
+            "UPDATE bot_config SET role_prompt = :role_prompt "
+            "WHERE TRIM(role_prompt) LIKE :legacy_role_prefix"
+        ),
+        {
+            "role_prompt": DEFAULT_ROLE_PROMPT,
+            "legacy_role_prefix": f"{DEFAULT_ROLE_PROMPT}%【行为规范】%",
+        },
+    )

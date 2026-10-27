@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db_session
 from app.engine.account_manager import ROOT_DIR, account_manager
@@ -25,8 +25,10 @@ from app.schemas.common import (
     AccountSetDefaultRequest,
     AccountSwitchRequest,
     BotConfigRead,
+    ChatMessageUpdate,
     DeferredBotConfigUpdate,
     ChatMessageRead,
+    MessageOwnerRead,
     SystemLogRead,
     TestConnectionRequest,
     TestConnectionResponse,
@@ -188,17 +190,77 @@ async def delete_whitelist_user(user_id: int, db: AsyncSession = Depends(get_db_
 
 # ── 历史消息与状态 ──
 
+@router.get("/message-users", response_model=List[MessageOwnerRead])
+async def list_message_users(db: AsyncSession = Depends(get_db_session)):
+    """列出数据库中所有拥有聊天记录的好友，不受白名单状态限制。"""
+    res = await db.execute(
+        select(
+            ChatMessage.user_id,
+            func.count(ChatMessage.id).label("message_count"),
+            func.max(ChatMessage.created_at).label("last_message_at"),
+        )
+        .group_by(ChatMessage.user_id)
+        .order_by(func.max(ChatMessage.created_at).desc())
+    )
+    return [dict(row._mapping) for row in res.all()]
+
+
 @router.get("/messages/{user_id}", response_model=List[ChatMessageRead])
-async def get_user_messages(user_id: int, limit: int = 50, db: AsyncSession = Depends(get_db_session)):
-    """获取指定好友的历史聊天记录。"""
+async def get_user_messages(user_id: int, db: AsyncSession = Depends(get_db_session)):
+    """获取指定好友的全部历史聊天记录。"""
     res = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.user_id == user_id)
-        .order_by(ChatMessage.id.desc())
-        .limit(limit)
+        .order_by(ChatMessage.id.asc())
     )
-    records = list(reversed(res.scalars().all()))
-    return records
+    return res.scalars().all()
+
+
+@router.patch("/messages/{message_id}", response_model=ChatMessageRead)
+async def update_chat_message(
+    message_id: int,
+    payload: ChatMessageUpdate,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """修改指定历史消息的文字与图片。"""
+    res = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
+    message = res.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="未找到该消息")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if "content" in changes:
+        changes["content"] = changes["content"].strip()
+        if not changes["content"]:
+            raise HTTPException(status_code=400, detail="消息内容不能为空")
+    if "image_urls" in changes:
+        changes["image_urls"] = changes["image_urls"] or None
+    for key, value in changes.items():
+        setattr(message, key, value)
+
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+@router.delete("/messages/{message_id}")
+async def delete_chat_message(message_id: int, db: AsyncSession = Depends(get_db_session)):
+    """删除指定历史消息。"""
+    res = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
+    message = res.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="未找到该消息")
+    await db.delete(message)
+    await db.commit()
+    return {"success": True}
+
+
+@router.delete("/messages/user/{user_id}")
+async def clear_user_messages(user_id: int, db: AsyncSession = Depends(get_db_session)):
+    """清空指定好友的全部历史消息。"""
+    result = await db.execute(delete(ChatMessage).where(ChatMessage.user_id == user_id))
+    await db.commit()
+    return {"success": True, "deleted": result.rowcount or 0}
 
 
 @router.get("/logs", response_model=List[SystemLogRead])

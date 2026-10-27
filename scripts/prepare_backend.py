@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 HEALTH_APP = "qq-chatbot"
-HEALTH_VERSION = "2026-10-27.7"
+HEALTH_VERSION = "2026-10-27.8"
 EXIT_START_NEW = 0
 EXIT_CONFLICT = 1
 EXIT_ALREADY_RUNNING = 10

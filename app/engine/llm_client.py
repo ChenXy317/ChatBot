@@ -75,16 +75,8 @@ class LLMClient:
         """组装上下文、时间戳与多模态数据并调用大模型，强制禁用思考过程。"""
         current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 强化禁止思考指令
-        full_system_prompt = (
-            f"{system_prompt}\n\n"
-            f"【系统环境】当前系统时间为：{current_time_str}。\n"
-            f"【核心禁令】绝对禁止输出任何思考过程、思维链、推理分析或内心独白"
-            f"（严禁出现 <think>、<thought> 等思考标签），必须直接输出真实自然的口语回复。"
-        )
-
         messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": full_system_prompt}
+            {"role": "system", "content": system_prompt}
         ]
 
         # 追加历史消息 (带时间戳)

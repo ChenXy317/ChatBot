@@ -437,6 +437,12 @@ body {
   grid-column: 1 / -1;
 }
 
+.prompt-stack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 24px;
+}
+
 .field-item label {
   display: flex;
   justify-content: space-between;
@@ -800,6 +806,44 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 .chat-thumb-img:hover {
   transform: scale(1.02);
+}
+
+.message-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message-row.assistant .message-meta-row {
+  flex-direction: row-reverse;
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.message-row:hover .message-actions,
+.message-row:focus-within .message-actions {
+  opacity: 1;
+}
+
+.record-count {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.prompt-preview {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ==========================================================================
@@ -1256,6 +1300,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
     grid-template-columns: 1fr;
   }
 
+  .prompt-stack {
+    grid-template-columns: 1fr;
+  }
+
   .account-overview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1281,6 +1329,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
   .message-row {
     max-width: 88%;
+  }
+
+  .message-actions {
+    opacity: 1;
   }
 
   .toast-container {

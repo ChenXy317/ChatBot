@@ -88,7 +88,7 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
-        <span>对话记录</span>
+        <span>消息数据库</span>
       </button>
 
       <button class="nav-item" data-tab="logs">
@@ -190,10 +190,17 @@
               </div>
             </div>
 
-            <div class="field-item full-width mt-20">
-              <label for="system_prompt">全局 System Prompt</label>
-              <textarea id="system_prompt" name="system_prompt" rows="8" placeholder="约束模型的口吻、人设、格式、换行分句与禁止 Markdown 等规则..."></textarea>
-              <span class="field-tip">系统将自动在末尾追加精确到秒的当前系统时间与上下文时间戳</span>
+            <div class="prompt-stack mt-20">
+              <div class="field-item">
+                <label for="role_prompt">角色设定</label>
+                <textarea id="role_prompt" name="role_prompt" rows="5" placeholder="设定机器人是谁、处于什么身份与关系..."></textarea>
+                <span class="field-tip">Prompt 第一段：机器人自身身份</span>
+              </div>
+              <div class="field-item">
+                <label for="output_prompt">输出设定（输出要求与当前场景）</label>
+                <textarea id="output_prompt" name="output_prompt" rows="9" placeholder="设定回复格式、语气、篇幅与当前场景..."></textarea>
+                <span class="field-tip">Prompt 第三段：全局输出规范与当前聊天场景</span>
+              </div>
             </div>
 
             <div class="card-footer">
@@ -351,12 +358,11 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th style="width: 140px;">好友 QQ 号</th>
-                    <th style="width: 180px;">备注信息</th>
+                    <th style="width: 180px;">好友 QQ 号</th>
                     <th style="width: 120px;">接管状态</th>
-                    <th>专属 Prompt</th>
+                    <th>好友人设</th>
                     <th style="width: 180px;">添加时间</th>
-                    <th style="width: 100px; text-align: right;">操作</th>
+                    <th style="width: 160px; text-align: right;">操作</th>
                   </tr>
                 </thead>
                 <tbody id="whitelistTableBody">
@@ -375,13 +381,15 @@
         <div class="panel-card">
           <div class="card-header">
             <div class="header-title-group">
-              <h2 class="card-title">历史交互记录</h2>
-              <p class="card-description">按会话查看好友与模型的历史消息与图片记录</p>
+              <h2 class="card-title">消息数据库管理</h2>
+              <p class="card-description">按好友查看、修改或删除数据库中的全部聊天记录</p>
             </div>
             <div class="filter-actions">
               <select id="historyUserSelect" class="form-select">
                 <option value="">选择白名单好友</option>
               </select>
+              <span class="record-count" id="historyRecordCount">0 条</span>
+              <button class="btn btn-secondary btn-xs" id="clearHistoryBtn" type="button" disabled>清空当前好友</button>
               <button class="btn btn-secondary btn-icon" id="refreshHistoryBtn" title="刷新记录">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="23 4 23 10 17 10"></polyline>
@@ -434,11 +442,11 @@
       </section>
     </main>
 
-    <!-- 模态对话框：添加好友 -->
+    <!-- 模态对话框：添加或编辑好友 -->
     <div class="modal-backdrop" id="addUserModal">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 class="modal-title">添加好友至接管白名单</h3>
+          <h3 class="modal-title" id="friendModalTitle">添加好友至接管白名单</h3>
           <button class="modal-close" id="closeAddUserModal" title="关闭">&times;</button>
         </div>
         <form id="addUserForm">
@@ -448,17 +456,40 @@
               <input type="number" id="new_user_id" required min="10000" max="99999999999" inputmode="numeric" placeholder="输入 5~11 位 QQ 数字">
             </div>
             <div class="field-item">
-              <label for="new_remark">备注名称 (可选)</label>
-              <input type="text" id="new_remark" placeholder="如：同学、客户李某">
-            </div>
-            <div class="field-item">
-              <label for="new_custom_prompt">专属人设与记忆 (可选)</label>
-              <textarea id="new_custom_prompt" rows="4" placeholder="针对该好友的专门语气、特定身份或背景记忆（留空则默认继承全局 Prompt）"></textarea>
+              <label for="new_custom_prompt">好友人设</label>
+              <textarea id="new_custom_prompt" rows="5" placeholder="描述这位好友的身份、关系与相处方式..."></textarea>
+              <span class="field-tip">Prompt 第二段：只对当前好友生效；留空则中间段为空</span>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" id="cancelAddUserBtn">取消</button>
-            <button type="submit" class="btn btn-primary">确认添加</button>
+            <button type="submit" class="btn btn-primary" id="saveFriendBtn">确认添加</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 模态对话框：编辑历史消息 -->
+    <div class="modal-backdrop" id="messageEditModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">编辑历史消息</h3>
+          <button class="modal-close" id="closeMessageEditModal" title="关闭">&times;</button>
+        </div>
+        <form id="messageEditForm">
+          <div class="modal-body">
+            <div class="field-item">
+              <label for="edit_message_content">消息内容</label>
+              <textarea id="edit_message_content" rows="7" required></textarea>
+            </div>
+            <div class="field-item">
+              <label for="edit_message_images">图片 URL（每行一个）</label>
+              <textarea id="edit_message_images" rows="3" placeholder="没有图片可留空"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="cancelMessageEditBtn">取消</button>
+            <button type="submit" class="btn btn-primary" id="saveMessageBtn">保存修改</button>
           </div>
         </form>
       </div>

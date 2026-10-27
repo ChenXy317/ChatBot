@@ -161,7 +161,8 @@ document.addEventListener("DOMContentLoaded", () => {
         : "sk-...";
       document.getElementById("model").value = data.model || "";
       document.getElementById("max_tokens").value = data.max_tokens || 2048;
-      document.getElementById("system_prompt").value = data.system_prompt || "";
+      document.getElementById("role_prompt").value = data.role_prompt || "";
+      document.getElementById("output_prompt").value = data.output_prompt || "";
 
       debounceInput.value = data.debounce_delay;
       debounceVal.textContent = `${data.debounce_delay}s`;
@@ -194,7 +195,8 @@ document.addEventListener("DOMContentLoaded", () => {
       temperature: parseFloat(tempSlider.value),
       top_p: parseFloat(topPSlider.value),
       max_tokens: parseInt(document.getElementById("max_tokens").value, 10),
-      system_prompt: document.getElementById("system_prompt").value,
+      role_prompt: document.getElementById("role_prompt").value,
+      output_prompt: document.getElementById("output_prompt").value,
     };
 
     try {
@@ -303,36 +305,41 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── 白名单管理 ──
   const whitelistTableBody = document.getElementById("whitelistTableBody");
   const addUserModal = document.getElementById("addUserModal");
+  const friendModalTitle = document.getElementById("friendModalTitle");
   const openAddUserModal = document.getElementById("openAddUserModal");
   const closeAddUserModal = document.getElementById("closeAddUserModal");
   const cancelAddUserBtn = document.getElementById("cancelAddUserBtn");
   const addUserForm = document.getElementById("addUserForm");
+  const newUserIdInput = document.getElementById("new_user_id");
+  const newCustomPromptInput = document.getElementById("new_custom_prompt");
+  const saveFriendBtn = document.getElementById("saveFriendBtn");
+  let editingFriendId = null;
 
   async function loadWhitelist() {
     try {
       const res = await apiFetch("/api/whitelist");
       const list = await res.json();
       if (!list.length) {
-        whitelistTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">当前白名单列表为空，请添加允许接管的好友</td></tr>`;
+        whitelistTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">当前白名单列表为空，请添加允许接管的好友</td></tr>`;
         return;
       }
 
       whitelistTableBody.innerHTML = list.map(u => `
         <tr>
           <td><span class="qq-badge">${u.user_id}</span></td>
-          <td>${escapeHtml(u.remark) || '<span style="color:var(--text-tertiary)">未设置</span>'}</td>
           <td>
             <label class="toggle-switch">
               <input type="checkbox" ${u.is_enabled ? "checked" : ""} onchange="toggleWhitelistUser(${u.user_id}, this.checked)">
               <span class="toggle-track"></span>
             </label>
           </td>
-          <td>
-            ${u.custom_prompt ? '<span class="tag-badge">专属设定</span>' : '<span style="color:var(--text-tertiary)">默认全局</span>'}
-          </td>
+          <td class="prompt-preview">${u.custom_prompt ? escapeHtml(u.custom_prompt) : '<span style="color:var(--text-tertiary)">未设置</span>'}</td>
           <td style="font-family:var(--font-mono); font-size:12px;">${formatDateTime(u.created_at)}</td>
           <td style="text-align: right;">
-            <button class="btn btn-danger-ghost" onclick="deleteWhitelistUser(${u.user_id})" title="移除好友">移除</button>
+            <div class="action-btns">
+              <button class="btn btn-secondary btn-xs" onclick="editWhitelistUser(${u.user_id})">编辑</button>
+              <button class="btn btn-danger-ghost" onclick="deleteWhitelistUser(${u.user_id})" title="移除好友">移除</button>
+            </div>
           </td>
         </tr>
       `).join("");
@@ -367,7 +374,30 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  openAddUserModal.addEventListener("click", () => addUserModal.classList.add("active"));
+  function openFriendModal(user = null) {
+    editingFriendId = user ? user.user_id : null;
+    friendModalTitle.textContent = user ? "编辑好友配置" : "添加好友至接管白名单";
+    saveFriendBtn.textContent = user ? "保存修改" : "确认添加";
+    newUserIdInput.value = user ? user.user_id : "";
+    newUserIdInput.disabled = Boolean(user);
+    newCustomPromptInput.value = user ? user.custom_prompt || "" : "";
+    addUserModal.classList.add("active");
+  }
+
+  window.editWhitelistUser = async userId => {
+    try {
+      const res = await apiFetch("/api/whitelist");
+      if (!res.ok) throw new Error("获取好友配置失败");
+      const users = await res.json();
+      const user = users.find(item => Number(item.user_id) === Number(userId));
+      if (!user) throw new Error("未找到该好友");
+      openFriendModal(user);
+    } catch (error) {
+      showToast("加载好友配置失败: " + error.message, "error");
+    }
+  };
+
+  openAddUserModal.addEventListener("click", () => openFriendModal());
   const closeModal = () => addUserModal.classList.remove("active");
   closeAddUserModal.addEventListener("click", closeModal);
   cancelAddUserBtn.addEventListener("click", closeModal);
@@ -375,17 +405,23 @@ document.addEventListener("DOMContentLoaded", () => {
   addUserForm.addEventListener("submit", async e => {
     e.preventDefault();
     const payload = {
-      user_id: parseInt(document.getElementById("new_user_id").value, 10),
-      remark: document.getElementById("new_remark").value.trim(),
-      custom_prompt: document.getElementById("new_custom_prompt").value.trim() || null,
-      is_enabled: true,
+      custom_prompt: newCustomPromptInput.value.trim() || null,
     };
 
     try {
-      const res = await apiFetch("/api/whitelist", {
-        method: "POST",
+      const isEditing = editingFriendId !== null;
+      const url = isEditing ? `/api/whitelist/${editingFriendId}` : "/api/whitelist";
+      const body = isEditing
+        ? payload
+        : {
+            ...payload,
+            user_id: parseInt(newUserIdInput.value, 10),
+            is_enabled: true,
+          };
+      const res = await apiFetch(url, {
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -393,7 +429,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       closeModal();
       addUserForm.reset();
-      showToast(`成功添加白名单好友 ${payload.user_id}`, "success");
+      showToast(isEditing ? "好友配置已更新" : `成功添加白名单好友 ${body.user_id}`, "success");
       loadWhitelist();
     } catch (err) {
       showToast("添加失败: " + err.message, "error");
@@ -404,24 +440,55 @@ document.addEventListener("DOMContentLoaded", () => {
   const historyUserSelect = document.getElementById("historyUserSelect");
   const chatContainer = document.getElementById("chatContainer");
   const refreshHistoryBtn = document.getElementById("refreshHistoryBtn");
+  const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+  const historyRecordCount = document.getElementById("historyRecordCount");
   const lightboxModal = document.getElementById("lightboxModal");
   const lightboxImg = document.getElementById("lightboxImg");
   const lightboxClose = document.getElementById("lightboxClose");
+  const messageEditModal = document.getElementById("messageEditModal");
+  const messageEditForm = document.getElementById("messageEditForm");
+  const editMessageContent = document.getElementById("edit_message_content");
+  const editMessageImages = document.getElementById("edit_message_images");
+  const closeMessageEditModal = document.getElementById("closeMessageEditModal");
+  const cancelMessageEditBtn = document.getElementById("cancelMessageEditBtn");
+  const saveMessageBtn = document.getElementById("saveMessageBtn");
+  let editingMessageId = null;
+  let currentHistoryUserId = "";
 
   async function loadHistoryUsers() {
     try {
-      const res = await apiFetch("/api/whitelist");
-      const list = await res.json();
+      const [whitelistRes, ownersRes] = await Promise.all([
+        apiFetch("/api/whitelist"),
+        apiFetch("/api/message-users"),
+      ]);
+      if (!whitelistRes.ok || !ownersRes.ok) throw new Error("获取消息好友列表失败");
+      const whitelist = await whitelistRes.json();
+      const owners = await ownersRes.json();
+      const userMap = new Map();
+      whitelist.forEach(user => {
+        userMap.set(String(user.user_id), { user_id: user.user_id, message_count: 0 });
+      });
+      owners.forEach(owner => {
+        userMap.set(String(owner.user_id), {
+          user_id: owner.user_id,
+          message_count: owner.message_count,
+        });
+      });
+      const list = Array.from(userMap.values())
+        .sort((a, b) => Number(a.user_id) - Number(b.user_id));
       const currentVal = historyUserSelect.value;
       historyUserSelect.innerHTML = `<option value="">选择白名单好友</option>` +
-        list.map(u => `<option value="${u.user_id}" ${currentVal == u.user_id ? "selected" : ""}>${escapeHtml(u.remark) ? `${escapeHtml(u.remark)} (${u.user_id})` : u.user_id}</option>`).join("");
+        list.map(u => `<option value="${u.user_id}" ${currentVal == u.user_id ? "selected" : ""}>${u.user_id}${u.message_count ? ` · ${u.message_count} 条` : ""}</option>`).join("");
     } catch (err) {
       console.error(err);
     }
   }
 
   async function loadUserChat(userId) {
+    currentHistoryUserId = userId || "";
+    clearHistoryBtn.disabled = !currentHistoryUserId;
     if (!userId) {
+      historyRecordCount.textContent = "0 条";
       chatContainer.innerHTML = `
         <div class="empty-state">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -434,8 +501,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const res = await apiFetch(`/api/messages/${userId}?limit=50`);
+      const res = await apiFetch(`/api/messages/${userId}`);
+      if (!res.ok) throw new Error("获取历史消息失败");
       const messages = await res.json();
+      historyRecordCount.textContent = `${messages.length} 条`;
       if (!messages.length) {
         chatContainer.innerHTML = `<div class="empty-state"><span>该好友暂无聊天消息记录</span></div>`;
         return;
@@ -449,7 +518,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
         return `
           <div class="message-row ${isUser ? "user" : "assistant"}">
-            <span class="message-meta">${formatDateTime(m.created_at)} · ${isUser ? "好友消息" : "接管回复"}</span>
+            <div class="message-meta-row">
+              <span class="message-meta">${formatDateTime(m.created_at)} · ${isUser ? "好友消息" : "接管回复"}</span>
+              <div class="message-actions">
+                <button class="btn btn-secondary btn-xs" onclick="editHistoryMessage(${m.id})">编辑</button>
+                <button class="btn btn-danger-ghost" onclick="deleteHistoryMessage(${m.id})">删除</button>
+              </div>
+            </div>
             <div class="message-bubble">${escapeHtml(m.content)}</div>
             ${imagesHtml}
           </div>
@@ -458,9 +533,97 @@ document.addEventListener("DOMContentLoaded", () => {
 
       chatContainer.scrollTop = chatContainer.scrollHeight;
     } catch (err) {
+      historyRecordCount.textContent = "0 条";
       chatContainer.innerHTML = `<div class="empty-state"><span>加载历史记录异常: ${err.message}</span></div>`;
     }
   }
+
+  window.editHistoryMessage = async messageId => {
+    try {
+      const res = await apiFetch(`/api/messages/${currentHistoryUserId}`);
+      if (!res.ok) throw new Error("获取历史消息失败");
+      const messages = await res.json();
+      const message = messages.find(item => Number(item.id) === Number(messageId));
+      if (!message) throw new Error("未找到该消息");
+      editingMessageId = message.id;
+      editMessageContent.value = message.content || "";
+      editMessageImages.value = (message.image_urls || []).join("\n");
+      messageEditModal.classList.add("active");
+    } catch (error) {
+      showToast("加载消息失败: " + error.message, "error");
+    }
+  };
+
+  function closeMessageEditor() {
+    messageEditModal.classList.remove("active");
+    editingMessageId = null;
+  }
+
+  window.deleteHistoryMessage = async messageId => {
+    if (!confirm("确定删除这条历史消息吗？删除后模型将不再读取它。")) return;
+    try {
+      const res = await apiFetch(`/api/messages/${messageId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("删除接口异常");
+      showToast("历史消息已删除", "success");
+      loadHistoryUsers();
+      loadUserChat(currentHistoryUserId);
+    } catch (error) {
+      showToast("删除失败: " + error.message, "error");
+    }
+  };
+
+  messageEditForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (editingMessageId === null) return;
+    saveMessageBtn.disabled = true;
+    try {
+      const imageUrls = editMessageImages.value
+        .split(/\r?\n/)
+        .map(value => value.trim())
+        .filter(Boolean);
+      const res = await apiFetch(`/api/messages/${editingMessageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: editMessageContent.value.trim(),
+          image_urls: imageUrls,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "保存接口异常");
+      closeMessageEditor();
+      showToast("历史消息已更新", "success");
+      loadUserChat(currentHistoryUserId);
+    } catch (error) {
+      showToast("保存失败: " + error.message, "error");
+    } finally {
+      saveMessageBtn.disabled = false;
+    }
+  });
+
+  closeMessageEditModal.addEventListener("click", closeMessageEditor);
+  cancelMessageEditBtn.addEventListener("click", closeMessageEditor);
+  messageEditModal.addEventListener("click", event => {
+    if (event.target === messageEditModal) closeMessageEditor();
+  });
+
+  clearHistoryBtn.addEventListener("click", async () => {
+    if (!currentHistoryUserId) return;
+    if (!confirm(`确定清空好友 ${currentHistoryUserId} 的全部历史消息吗？此操作不可恢复。`)) return;
+    clearHistoryBtn.disabled = true;
+    try {
+      const res = await apiFetch(`/api/messages/user/${currentHistoryUserId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "清空接口异常");
+      showToast(`已清空 ${data.deleted || 0} 条历史消息`, "success");
+      loadHistoryUsers();
+      loadUserChat(currentHistoryUserId);
+    } catch (error) {
+      showToast("清空失败: " + error.message, "error");
+    } finally {
+      clearHistoryBtn.disabled = !currentHistoryUserId;
+    }
+  });
 
   historyUserSelect.addEventListener("change", e => loadUserChat(e.target.value));
   refreshHistoryBtn.addEventListener("click", () => loadUserChat(historyUserSelect.value));
@@ -928,6 +1091,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Escape") {
       closeModal();
       closeLightbox();
+      closeMessageEditor();
       closeQrModalFunc();
     }
   });

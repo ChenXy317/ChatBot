@@ -10,7 +10,8 @@ class BotConfigBase(BaseModel):
     api_base: str = Field(..., description="OpenAI 兼容基础接口地址")
     api_key: str = Field(default="", description="API 密钥")
     model: str = Field(..., description="调用模型名称")
-    system_prompt: str = Field(..., description="系统人设提示词")
+    role_prompt: str = Field(default="", description="机器人角色设定")
+    output_prompt: str = Field(default="", description="输出要求与当前场景")
     temperature: float = Field(default=0.8, ge=0.0, le=2.0, description="采样温度")
     top_p: float = Field(default=0.9, ge=0.0, le=1.0, description="核采样比例")
     max_tokens: int = Field(default=2048, ge=64, le=16384, description="最大生成 Token 数量")
@@ -34,7 +35,8 @@ class BotConfigUpdate(BaseModel):
     api_base: Optional[str] = None
     api_key: Optional[str] = None
     model: Optional[str] = None
-    system_prompt: Optional[str] = None
+    role_prompt: Optional[str] = None
+    output_prompt: Optional[str] = None
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
     top_p: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     max_tokens: Optional[int] = Field(default=None, ge=64, le=16384)
@@ -51,14 +53,12 @@ class DeferredBotConfigUpdate(BotConfigUpdate):
 class WhitelistUserCreate(BaseModel):
     """添加白名单用户。"""
     user_id: int = Field(..., description="好友 QQ 号")
-    remark: str = Field(default="", description="好友备注")
     is_enabled: bool = Field(default=True, description="是否启用接管")
     custom_prompt: Optional[str] = Field(default=None, description="针对该好友的专属 Prompt")
 
 
 class WhitelistUserUpdate(BaseModel):
     """更新白名单用户。"""
-    remark: Optional[str] = None
     is_enabled: Optional[bool] = None
     custom_prompt: Optional[str] = None
 
@@ -67,7 +67,6 @@ class WhitelistUserRead(BaseModel):
     """白名单读取响应。"""
     id: int
     user_id: int
-    remark: str
     is_enabled: bool
     custom_prompt: Optional[str]
     created_at: datetime
@@ -87,6 +86,19 @@ class ChatMessageRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ChatMessageUpdate(BaseModel):
+    """编辑聊天历史记录。"""
+    content: str = Field(..., min_length=1, description="修改后的消息内容")
+    image_urls: Optional[List[str]] = Field(default=None, description="图片 URL 列表")
+
+
+class MessageOwnerRead(BaseModel):
+    """拥有历史消息的好友及记录数量。"""
+    user_id: int
+    message_count: int
+    last_message_at: Optional[datetime] = None
 
 
 class SystemLogRead(BaseModel):
