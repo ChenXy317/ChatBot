@@ -19,7 +19,6 @@ CACHE_DIR = os.path.join(NAPCAT_DIR, "cache")
 QRCODE_FILE = os.path.join(CACHE_DIR, "qrcode.png")
 LAST_ACCOUNT_FILE = os.path.join(NAPCAT_DIR, ".last_account")
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-START_NAPCAT_BAT = os.path.join(ROOT_DIR, "start_napcat.bat")
 
 
 class AccountManager:
@@ -177,8 +176,11 @@ class AccountManager:
                 arg = "qr"
 
         try:
-            cmd = f'start "NapCatQQ" cmd /c "call \"{START_NAPCAT_BAT}\" {arg}"'
-            subprocess.Popen(cmd, shell=True, cwd=ROOT_DIR)
+            if arg == "qr":
+                cmd = f'start "NapCatQQ" cmd /c "cd /d \"{NAPCAT_DIR}\" && call launcher-user.bat || pause"'
+            else:
+                cmd = f'start "NapCatQQ" cmd /c "cd /d \"{NAPCAT_DIR}\" && call launcher-user.bat -q {arg} || pause"'
+            subprocess.Popen(cmd, shell=True, cwd=NAPCAT_DIR)
             return {
                 "success": True,
                 "message": f"已启动 NapCat ({'扫码模式' if arg == 'qr' else f'快速登录: {arg}'})",

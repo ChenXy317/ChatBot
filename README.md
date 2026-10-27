@@ -47,7 +47,7 @@ ChatBot/
 
 只需要这一个终端。脚本拉起 MariaDB 和中继后，把中继放进后台（`http://127.0.0.1:8090`，日志 `/tmp/chatbot-server.log`），然后在当前终端启动 NapCat，二维码直接打在屏幕上。Ctrl+C 只退出 QQ 登录，中继继续跑。已经登录过时可以 `QQ=你的QQ号 ~/chatbot` 快速登录。
 
-仓库里的 `napcat/` 仍是 Windows 快照，不要执行 `start_napcat.bat`。NapCat 的 WebUI 里把反向 WebSocket 配成：
+仓库里的 `napcat/` 为 Windows 运行环境。在 Windows 上只需双击根目录 `start.bat` 即可一键拉起中继后端、NapCat 协议端并自动唤起浏览器控制台。反向 WebSocket 默认配置：
 
 ```
 ws://127.0.0.1:8090/ws/qq
@@ -71,7 +71,7 @@ MYSQL_USER=root
 MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=qq_chatbot
 
-SERVER_HOST=0.0.0.0
+SERVER_HOST=127.0.0.1
 SERVER_PORT=8090
 ```
 
