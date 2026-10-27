@@ -37,12 +37,15 @@ ChatBot/
 
 这台机器是 Android 上的 Ubuntu aarch64，数据库是已经装好的 Termux MariaDB 12.3（数据目录 `/data/data/com.termux/files/usr/var/lib/mysql`）。本服务使用单独的库 `qq_chatbot`，`root` 通过 `127.0.0.1:3306` 登录，密码为空。
 
+在 Termux 里执行：
+
 ```bash
-chmod +x start.sh
-./start.sh
+~/chatbot
 ```
 
-只需要这一个终端。脚本拉起 MariaDB 和中继后，把中继放进后台（`http://127.0.0.1:8090`，日志 `/tmp/chatbot-server.log`），然后在当前终端启动 `/root/Napcat` 里的 NapCat，二维码直接打在屏幕上。Ctrl+C 只退出 QQ 登录，中继继续跑。已经登录过时可以 `QQ=你的QQ号 ./start.sh` 快速登录。
+项目目录在共享存储上，不能直接 `./start.sh`，会出现 `Permission denied`。`~/chatbot` 会进入装好 NapCat 的 Ubuntu，再用 `bash start.sh` 启动。
+
+只需要这一个终端。脚本拉起 MariaDB 和中继后，把中继放进后台（`http://127.0.0.1:8090`，日志 `/tmp/chatbot-server.log`），然后在当前终端启动 NapCat，二维码直接打在屏幕上。Ctrl+C 只退出 QQ 登录，中继继续跑。已经登录过时可以 `QQ=你的QQ号 ~/chatbot` 快速登录。
 
 仓库里的 `napcat/` 仍是 Windows 快照，不要执行 `start_napcat.bat`。NapCat 的 WebUI 里把反向 WebSocket 配成：
 
