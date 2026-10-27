@@ -20,6 +20,8 @@ class UserSessionState:
     """单个用户的会话任务与缓冲队列。"""
     pending_texts: List[str] = field(default_factory=list)
     pending_images: List[str] = field(default_factory=list)
+    active_text: str = ""
+    active_images: List[str] = field(default_factory=list)
     timer_task: Optional[asyncio.Task] = None
     generation_task: Optional[asyncio.Task] = None
 
@@ -51,6 +53,21 @@ class MessageDebouncer:
             self._sessions[user_id] = UserSessionState()
         return self._sessions[user_id]
 
+    def clear_session(self, user_id: int) -> None:
+        """清空指定用户的防抖缓冲队列与中断正在运行的任务。"""
+        if user_id in self._sessions:
+            state = self._sessions[user_id]
+            if state.timer_task and not state.timer_task.done():
+                state.timer_task.cancel()
+                state.timer_task = None
+            if state.generation_task and not state.generation_task.done():
+                state.generation_task.cancel()
+                state.generation_task = None
+            state.pending_texts.clear()
+            state.pending_images.clear()
+            state.active_text = ""
+            state.active_images.clear()
+
     async def handle_incoming_message(
         self,
         user_id: int,
@@ -63,13 +80,19 @@ class MessageDebouncer:
         state = self.get_session(user_id)
         self._set_state(f"incoming:{user_id}:{message_id or ''}")
 
-        # 1. 如果之前正在执行大模型生成或发送，立即强制打断并丢弃
+        # 1. 如果之前正在执行回复任务，强行中断并保留未下发内容
         if state.generation_task and not state.generation_task.done():
             logger.info(f"用户 {user_id} 发送新消息，强制打断正在生成的回复任务")
             state.generation_task.cancel()
             state.generation_task = None
+            if state.active_text:
+                state.pending_texts.insert(0, state.active_text)
+                state.active_text = ""
+            if state.active_images:
+                state.pending_images = state.active_images + state.pending_images
+                state.active_images.clear()
 
-        # 2. 如果已有防抖计时器在运行，取消旧计时器（重置 1.5s 计时）
+        # 2. 如果已有防抖计时器在运行，取消旧计时器
         if state.timer_task and not state.timer_task.done():
             state.timer_task.cancel()
             state.timer_task = None
@@ -79,14 +102,13 @@ class MessageDebouncer:
             state.pending_texts.append(text.strip())
         state.pending_images.extend(image_urls)
 
-        # 4. 启动新的 1.5s 倒计时任务
+        # 4. 启动倒计时任务
         state.timer_task = asyncio.create_task(
             self._debounce_timer(user_id)
         )
 
     async def _debounce_timer(self, user_id: int) -> None:
         """防抖计时器协程。"""
-        # 读取当前配置中的防抖秒数
         debounce_delay = 1.5
         try:
             async with async_session_factory() as session:
@@ -100,13 +122,14 @@ class MessageDebouncer:
         try:
             if debounce_delay > 0:
                 await asyncio.sleep(debounce_delay)
-            # 倒计时结束且中途无新消息打断，开始执行大模型调用
+            else:
+                # 零延迟时让出微小时间片合并极短时间内的同批消息
+                await asyncio.sleep(0.01)
             state = self.get_session(user_id)
             state.generation_task = asyncio.create_task(
                 self._execute_llm_cycle(user_id)
             )
         except asyncio.CancelledError:
-            # 倒计时被中途到来的新消息重置
             pass
 
     async def _execute_llm_cycle(self, user_id: int) -> None:
@@ -118,8 +141,12 @@ class MessageDebouncer:
         combined_images = list(state.pending_images)
         state.pending_texts.clear()
         state.pending_images.clear()
+        state.active_text = combined_text
+        state.active_images = combined_images
 
         if not combined_text and not combined_images:
+            state.active_text = ""
+            state.active_images.clear()
             return
 
         async with async_session_factory() as session:
@@ -211,6 +238,8 @@ class MessageDebouncer:
                 send_message_fn=self._send_message_fn,
                 set_status_fn=self._set_status_fn,
             )
+            state.active_text = ""
+            state.active_images.clear()
             self._set_state(f"sent:{user_id}")
 
         except asyncio.CancelledError:
@@ -218,6 +247,8 @@ class MessageDebouncer:
             logger.info(f"用户 {user_id} 的回复任务在执行中被强行打断，已舍弃输出")
             raise
         except Exception as e:
+            state.active_text = ""
+            state.active_images.clear()
             self._set_state(f"error:{user_id}:{str(e)}")
             logger.error(f"处理用户 {user_id} 对话失败: {e}", exc_info=True)
             async with async_session_factory() as session:

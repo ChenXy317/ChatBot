@@ -7,11 +7,30 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import WebSocket, WebSocketDisconnect
+from sqlalchemy import delete, select
 from app.core.config import settings
+from app.core.database import async_session_factory
 from app.engine.debouncer import MessageDebouncer
 from app.engine.duplicate_guard import MessageDeduplicator
+from app.models.orm import ChatMessage, SystemLog, WhitelistUser
 
 logger = logging.getLogger(__name__)
+
+# 好友清空上下文指令集合
+CLEAR_COMMANDS = {
+    "/clear",
+    "／clear",
+    "/clean",
+    "／clean",
+    "/reset",
+    "／reset",
+    "清空上下文",
+    "清除上下文",
+    "清空记忆",
+    "清除记忆",
+    "重置对话",
+    "清空历史",
+}
 
 
 class OneBotGateway:
@@ -230,6 +249,42 @@ class OneBotGateway:
                         self.last_event["action"] = "ignored_duplicate"
                         logger.info("忽略重复私聊消息: message_id=%s", message_id)
                         continue
+
+                    # 处理清空上下文指令
+                    cmd = text.strip().lower().rstrip("!！.。~～")
+                    if cmd in CLEAR_COMMANDS:
+                        async with async_session_factory() as session:
+                            wl_res = await session.execute(
+                                select(WhitelistUser).where(WhitelistUser.user_id == user_id)
+                            )
+                            wl_user = wl_res.scalar_one_or_none()
+                            if not wl_user or not wl_user.is_enabled:
+                                logger.info(f"用户 {user_id} 发送清空指令但未在白名单启用，跳过")
+                                self.last_event["action"] = "ignored_non_whitelist"
+                                continue
+
+                            if self.debouncer:
+                                self.debouncer.clear_session(user_id)
+
+                            await session.execute(
+                                delete(ChatMessage).where(ChatMessage.user_id == user_id)
+                            )
+                            log_entry = SystemLog(
+                                level="INFO",
+                                source="GATEWAY",
+                                message=f"好友 {user_id} 发送指令 [{text.strip()}] 清空了上下文记忆",
+                            )
+                            session.add(log_entry)
+                            await session.commit()
+
+                        logger.info(f"已清空好友 [{user_id}] 上下文记忆")
+                        try:
+                            await self.send_private_message(user_id, "已清空当前会话的上下文记忆。")
+                        except Exception as e:
+                            logger.error(f"发送清空上下文确认消息失败: {e}")
+                        self.last_event["action"] = "cleared_context"
+                        continue
+
                     self.last_event["action"] = "queued"
 
                     if self.debouncer:

@@ -270,6 +270,9 @@ async def clear_user_messages(user_id: int, db: AsyncSession = Depends(get_db_se
     """清空指定好友的全部历史消息。"""
     result = await db.execute(delete(ChatMessage).where(ChatMessage.user_id == user_id))
     await db.commit()
+    from app.gateway.onebot_ws import gateway
+    if gateway.debouncer:
+        gateway.debouncer.clear_session(user_id)
     return {"success": True, "deleted": result.rowcount or 0}
 
 

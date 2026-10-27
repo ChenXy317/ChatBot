@@ -123,15 +123,16 @@ class HumanizerPipeline:
             return
 
         for idx, sentence in enumerate(sentences):
-            # 发送前设置“正在输入...”状态
-            try:
-                await set_status_fn(user_id)
-            except Exception as e:
-                logger.debug(f"更新正在输入状态异常: {e}")
+            # 仅在配置打字耗时时向客户端同步输入中状态
+            if self.typing_speed > 0:
+                try:
+                    await set_status_fn(user_id)
+                except Exception as e:
+                    logger.debug(f"更新正在输入状态异常: {e}")
 
-            # 动态计算打字耗时（设为 0 时立即发送，跳过等待）
+            # 动态计算打字耗时，零延迟时首句即发，多句分段保留极短间隔防风控
             if self.typing_speed <= 0:
-                sleep_duration = 0.0
+                sleep_duration = 0.0 if idx == 0 else 0.1
             else:
                 base_delay = 1.0 if idx == 0 else 0.5
                 char_delay = len(sentence) * self.typing_speed
