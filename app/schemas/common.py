@@ -108,3 +108,40 @@ class TestConnectionResponse(BaseModel):
     latency_ms: float
     reply: str
     error: Optional[str] = None
+
+
+class AccountItem(BaseModel):
+    """单个 QQ 账号配置状态。"""
+    qq: str
+    is_online: bool
+    is_default: bool
+    has_ws_config: bool
+    last_active: str
+
+
+class AccountListResponse(BaseModel):
+    """账号列表与运行状态响应。"""
+    online_qq: Optional[str] = None
+    online_nickname: Optional[str] = None
+    is_connected: bool
+    is_process_running: bool
+    default_account: Optional[str] = None
+    accounts: List[AccountItem]
+
+
+class AccountSwitchRequest(BaseModel):
+    """切换账号请求。"""
+    qq: str = Field(..., description="目标 QQ 账号")
+    auto_start: bool = Field(default=True, description="是否立即拉起启动")
+
+
+class AccountSetDefaultRequest(BaseModel):
+    """设定默认账号请求。"""
+    qq: str = Field(..., description="默认 QQ 账号")
+
+
+class AccountLaunchRequest(BaseModel):
+    """拉起 NapCat 实例请求。"""
+    qq: Optional[str] = None
+    qr_mode: bool = False
+

@@ -36,6 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
         targetPane.classList.add("active");
       }
 
+      if (targetTab === "accounts") loadAccounts();
       if (targetTab === "whitelist") loadWhitelist();
       if (targetTab === "history") loadHistoryUsers();
       if (targetTab === "logs") loadLogs();
@@ -393,6 +394,305 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("日志已刷新", "info");
   });
 
+  // ── 账号管理系统 ──
+  const overviewOnlineText = document.getElementById("overviewOnlineText");
+  const overviewDot = document.getElementById("overviewDot");
+  const overviewCurrentQQ = document.getElementById("overviewCurrentQQ");
+  const overviewDefaultQQ = document.getElementById("overviewDefaultQQ");
+  const overviewProcessStatus = document.getElementById("overviewProcessStatus");
+  const accountsTableBody = document.getElementById("accountsTableBody");
+  const refreshAccountsBtn = document.getElementById("refreshAccountsBtn");
+  const stopNapcatBtn = document.getElementById("stopNapcatBtn");
+  const openQrLoginBtn = document.getElementById("openQrLoginBtn");
+  const quickLaunchForm = document.getElementById("quickLaunchForm");
+  const quickLaunchQQ = document.getElementById("quickLaunchQQ");
+  const quickLaunchSubmitBtn = document.getElementById("quickLaunchSubmitBtn");
+
+  // 扫码弹层元素
+  const qrModal = document.getElementById("qrModal");
+  const closeQrModal = document.getElementById("closeQrModal");
+  const cancelQrBtn = document.getElementById("cancelQrBtn");
+  const refreshQrBtn = document.getElementById("refreshQrBtn");
+  const qrLoading = document.getElementById("qrLoading");
+  const qrImage = document.getElementById("qrImage");
+  const qrStatusTip = document.getElementById("qrStatusTip");
+  let qrPollTimer = null;
+
+  async function loadAccounts() {
+    try {
+      const res = await fetch("/api/accounts");
+      if (!res.ok) throw new Error("获取账号列表失败");
+      const data = await res.json();
+
+      // 更新概览指标
+      if (data.is_connected) {
+        if (overviewDot) overviewDot.className = "badge-dot online";
+        if (overviewOnlineText) overviewOnlineText.textContent = "在线运行中";
+      } else {
+        if (overviewDot) overviewDot.className = "badge-dot";
+        if (overviewOnlineText) overviewOnlineText.textContent = "离线";
+      }
+
+      const curNick = data.online_nickname ? `${data.online_nickname} · ` : "";
+      if (overviewCurrentQQ) overviewCurrentQQ.textContent = data.online_qq ? `${curNick}${data.online_qq}` : "-";
+      if (overviewDefaultQQ) overviewDefaultQQ.textContent = data.default_account || "-";
+      if (overviewProcessStatus) overviewProcessStatus.textContent = data.is_process_running ? "运行中 (QQ.exe)" : "已停止";
+
+      // 渲染账号表格
+      if (!accountsTableBody) return;
+      if (!data.accounts || data.accounts.length === 0) {
+        accountsTableBody.innerHTML = `
+          <tr>
+            <td colspan="5" class="table-empty">暂无已记录的 QQ 账号，可点击右上角“扫码登录新账号”或输入账号快速启动</td>
+          </tr>
+        `;
+        return;
+      }
+
+      accountsTableBody.innerHTML = data.accounts.map(acc => {
+        let statusBadge = "";
+        if (acc.is_online) {
+          statusBadge = '<span class="tag-badge tag-online">● 在线接管中</span>';
+        } else if (acc.is_default) {
+          statusBadge = '<span class="tag-badge tag-default">默认启动</span>';
+        } else {
+          statusBadge = '<span class="tag-badge">离线就绪</span>';
+        }
+
+        const wsBadge = acc.has_ws_config
+          ? '<span class="tag-badge tag-ws-ok">已对齐 (8090)</span>'
+          : '<span class="tag-badge tag-ws-no">待补全</span>';
+
+        return `
+          <tr>
+            <td><strong style="font-family: var(--font-mono); font-size: 14px;">${escapeHtml(acc.qq)}</strong></td>
+            <td>${statusBadge}</td>
+            <td>${wsBadge}</td>
+            <td style="color: var(--text-secondary); font-size: 12px;">${acc.last_active || "无记录"}</td>
+            <td style="text-align: right;">
+              <div class="action-btns">
+                <button class="btn btn-secondary btn-xs btn-switch" data-qq="${escapeHtml(acc.qq)}" title="停止当前并以此账号启动 NapCat">
+                  切换并启动
+                </button>
+                <button class="btn btn-secondary btn-xs btn-set-default" data-qq="${escapeHtml(acc.qq)}" title="设为默认启动账号">
+                  设为默认
+                </button>
+                <button class="btn btn-secondary btn-xs btn-del-acc" data-qq="${escapeHtml(acc.qq)}" title="删除本地凭据">
+                  删除
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      // 绑定表格内部按钮
+      accountsTableBody.querySelectorAll(".btn-switch").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const qq = btn.getAttribute("data-qq");
+          btn.disabled = true;
+          showToast(`正在切换至账号 ${qq}...`, "info");
+          try {
+            const resp = await fetch("/api/accounts/switch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ qq, auto_start: true }),
+            });
+            const rData = await resp.json();
+            if (rData.success) {
+              showToast(rData.message || `已拉起账号 ${qq}`, "success");
+            } else {
+              showToast(rData.message || "切换失败", "error");
+            }
+          } catch (e) {
+            showToast("切换异常: " + e.message, "error");
+          } finally {
+            btn.disabled = false;
+            setTimeout(loadAccounts, 1500);
+            setTimeout(pollStatus, 2000);
+          }
+        });
+      });
+
+      accountsTableBody.querySelectorAll(".btn-set-default").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const qq = btn.getAttribute("data-qq");
+          try {
+            const resp = await fetch("/api/accounts/set-default", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ qq }),
+            });
+            const rData = await resp.json();
+            if (rData.success) {
+              showToast(`已设为默认账号: ${qq}`, "success");
+              loadAccounts();
+            }
+          } catch (e) {
+            showToast("设置失败: " + e.message, "error");
+          }
+        });
+      });
+
+      accountsTableBody.querySelectorAll(".btn-del-acc").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const qq = btn.getAttribute("data-qq");
+          if (!confirm(`确定要移除账号 ${qq} 的本地配置文件吗？`)) return;
+          try {
+            const resp = await fetch(`/api/accounts/${qq}`, { method: "DELETE" });
+            const rData = await resp.json();
+            if (rData.success) {
+              showToast(`已移除账号 ${qq}`, "info");
+              loadAccounts();
+            } else {
+              showToast(rData.detail || "删除失败", "error");
+            }
+          } catch (e) {
+            showToast("删除异常: " + e.message, "error");
+          }
+        });
+      });
+
+    } catch (err) {
+      showToast("加载账号信息失败: " + err.message, "error");
+    }
+  }
+
+  // 刷新账号
+  if (refreshAccountsBtn) {
+    refreshAccountsBtn.addEventListener("click", () => {
+      loadAccounts();
+      showToast("已刷新账号列表", "info");
+    });
+  }
+
+  // 停止 NapCat
+  if (stopNapcatBtn) {
+    stopNapcatBtn.addEventListener("click", async () => {
+      if (!confirm("确定要停止当前运行的 NapCat / QQ 进程吗？")) return;
+      stopNapcatBtn.disabled = true;
+      try {
+        const resp = await fetch("/api/accounts/stop", { method: "POST" });
+        const data = await resp.json();
+        showToast(data.message || "已发送停止指令", "info");
+      } catch (e) {
+        showToast("停止进程异常: " + e.message, "error");
+      } finally {
+        stopNapcatBtn.disabled = false;
+        setTimeout(loadAccounts, 1000);
+        setTimeout(pollStatus, 1500);
+      }
+    });
+  }
+
+  // 快速启动表单
+  if (quickLaunchForm) {
+    quickLaunchForm.addEventListener("submit", async e => {
+      e.preventDefault();
+      const qq = quickLaunchQQ.value.trim();
+      if (!qq) return;
+      quickLaunchSubmitBtn.disabled = true;
+      showToast(`正在启动账号 ${qq}...`, "info");
+      try {
+        const resp = await fetch("/api/accounts/switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ qq, auto_start: true }),
+        });
+        const data = await resp.json();
+        if (data.success) {
+          showToast(data.message || `已拉起账号 ${qq}`, "success");
+          quickLaunchQQ.value = "";
+        } else {
+          showToast(data.message || "启动失败", "error");
+        }
+      } catch (err) {
+        showToast("启动异常: " + err.message, "error");
+      } finally {
+        quickLaunchSubmitBtn.disabled = false;
+        setTimeout(loadAccounts, 1500);
+        setTimeout(pollStatus, 2000);
+      }
+    });
+  }
+
+  // ── 扫码登录浮层与轮询 ──
+  function openQrModal() {
+    if (!qrModal) return;
+    qrModal.classList.add("active");
+    if (qrImage) qrImage.style.display = "none";
+    if (qrLoading) qrLoading.style.display = "flex";
+    if (qrStatusTip) qrStatusTip.textContent = "正在拉起 NapCat 扫码服务...";
+
+    // 触发后端以二维码模式启动
+    fetch("/api/accounts/launch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qr_mode: true }),
+    }).catch(console.error);
+
+    startQrPolling();
+  }
+
+  function closeQrModalFunc() {
+    if (qrModal) qrModal.classList.remove("active");
+    if (qrPollTimer) {
+      clearInterval(qrPollTimer);
+      qrPollTimer = null;
+    }
+  }
+
+  function startQrPolling() {
+    if (qrPollTimer) clearInterval(qrPollTimer);
+    let attempts = 0;
+
+    qrPollTimer = setInterval(async () => {
+      attempts++;
+      // 检测是否已经连接网关成功
+      try {
+        const statusRes = await fetch("/api/status");
+        if (statusRes.ok) {
+          const sData = await statusRes.json();
+          if (sData.napcat_connected) {
+            closeQrModalFunc();
+            showToast("扫码登录成功！已接管当前 QQ 账号", "success");
+            loadAccounts();
+            pollStatus();
+            return;
+          }
+        }
+      } catch (_) {}
+
+      // 获取二维码图片
+      try {
+        const qrRes = await fetch(`/api/accounts/qrcode?t=${Date.now()}`);
+        if (qrRes.ok) {
+          const blob = await qrRes.blob();
+          if (qrImage) {
+            qrImage.src = URL.createObjectURL(blob);
+            qrImage.style.display = "block";
+          }
+          if (qrLoading) qrLoading.style.display = "none";
+        }
+      } catch (_) {}
+
+      if (attempts > 120) {
+        closeQrModalFunc();
+        showToast("扫码等待超时，请重新点击扫码登录", "error");
+      }
+    }, 1500);
+  }
+
+  if (openQrLoginBtn) openQrLoginBtn.addEventListener("click", openQrModal);
+  if (closeQrModal) closeQrModal.addEventListener("click", closeQrModalFunc);
+  if (cancelQrBtn) cancelQrBtn.addEventListener("click", closeQrModalFunc);
+  if (refreshQrBtn) {
+    refreshQrBtn.addEventListener("click", () => {
+      startQrPolling();
+      showToast("正在重新探测二维码...", "info");
+    });
+  }
+
   // ── NapCat 状态轮询 ──
   const napcatBadge = document.getElementById("napcatBadge");
   const statusText = document.getElementById("statusText");
@@ -404,7 +704,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await res.json();
         if (data.napcat_connected) {
           napcatBadge.className = "connection-badge online";
-          statusText.textContent = "NapCat 协议端已连接";
+          const nick = data.current_nickname ? `${data.current_nickname} · ` : "";
+          statusText.textContent = `已连接: ${nick}${data.current_qq || "QQ"}`;
         } else {
           napcatBadge.className = "connection-badge";
           statusText.textContent = "NapCat 协议端未连接";
@@ -421,6 +722,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Escape") {
       closeModal();
       closeLightbox();
+      closeQrModalFunc();
     }
   });
 

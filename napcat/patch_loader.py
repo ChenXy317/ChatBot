@@ -41,9 +41,14 @@ def patch_qq_versions():
 
 
 def record_latest_account():
-    """检测最近登录的 QQ 账号，供免密快速登录使用。"""
+    """检测最近登录的 QQ 账号，供免密快速登录使用（仅在未设置时填充）。"""
     try:
         current_dir = os.path.abspath(os.path.dirname(__file__))
+        last_account_file = os.path.join(current_dir, ".last_account")
+        if os.path.exists(last_account_file):
+            with open(last_account_file, "r", encoding="utf-8") as f:
+                if f.read().strip():
+                    return
         config_dir = os.path.join(current_dir, "config")
         files = glob.glob(os.path.join(config_dir, "onebot11_*.json"))
         if files:
@@ -51,7 +56,6 @@ def record_latest_account():
             m = re.search(r"onebot11_(\d+)\.json", os.path.basename(files[0]))
             if m:
                 latest_qq = m.group(1)
-                last_account_file = os.path.join(current_dir, ".last_account")
                 with open(last_account_file, "w", encoding="utf-8") as f:
                     f.write(latest_qq.strip())
                 print(f"检测到最近登录账号: {latest_qq}")

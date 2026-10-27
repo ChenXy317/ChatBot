@@ -4,13 +4,20 @@ import time
 from datetime import datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db_session
+from app.engine.account_manager import account_manager
 from app.gateway.onebot_ws import gateway
 from app.models.orm import BotConfig, ChatMessage, SystemLog, WhitelistUser
 from app.schemas.common import (
+    AccountItem,
+    AccountLaunchRequest,
+    AccountListResponse,
+    AccountSetDefaultRequest,
+    AccountSwitchRequest,
     BotConfigRead,
     BotConfigUpdate,
     ChatMessageRead,
@@ -167,11 +174,84 @@ async def get_system_logs(limit: int = 50, db: AsyncSession = Depends(get_db_ses
     return list(reversed(res.scalars().all()))
 
 
+# ── 账号管理与协议端控制 ──
+
+@router.get("/accounts", response_model=AccountListResponse)
+async def list_accounts():
+    """获取所有已记录的 QQ 账号及当前状态。"""
+    return account_manager.list_accounts()
+
+
+@router.post("/accounts/switch")
+async def switch_account(payload: AccountSwitchRequest):
+    """切换至指定账号并可选自动拉起 NapCat。"""
+    qq = payload.qq.strip()
+    if not qq:
+        raise HTTPException(status_code=400, detail="QQ 账号不能为空")
+
+    account_manager.set_default_account(qq)
+    account_manager.ensure_ws_config(qq)
+
+    if payload.auto_start:
+        result = account_manager.launch_napcat(qq=qq)
+        return result
+    return {"success": True, "message": f"已将账号 {qq} 设为下一次启动账号"}
+
+
+@router.post("/accounts/set-default")
+async def set_default_account(payload: AccountSetDefaultRequest):
+    """将指定账号设为默认启动账号。"""
+    qq = payload.qq.strip()
+    if not qq:
+        raise HTTPException(status_code=400, detail="QQ 账号不能为空")
+    account_manager.set_default_account(qq)
+    account_manager.ensure_ws_config(qq)
+    return {"success": True, "message": f"已设为默认账号: {qq}"}
+
+
+@router.post("/accounts/launch")
+async def launch_account(payload: AccountLaunchRequest):
+    """启动或重启 NapCat 进程（支持指定 QQ 或扫码模式）。"""
+    return account_manager.launch_napcat(qq=payload.qq, qr_mode=payload.qr_mode)
+
+
+@router.post("/accounts/stop")
+async def stop_napcat():
+    """停止运行中的 NapCat/QQ 进程。"""
+    ok = account_manager.stop_napcat()
+    return {"success": ok, "message": "已发送停止进程指令"}
+
+
+@router.delete("/accounts/{qq}")
+async def delete_account(qq: str):
+    """删除本地指定账号的配置文件。"""
+    clean_qq = qq.strip()
+    if gateway.is_connected and gateway.current_qq == clean_qq:
+        raise HTTPException(status_code=400, detail="当前账号正在连接中，请先停止运行或切换账号后再删除")
+    ok = account_manager.delete_account(clean_qq)
+    return {"success": ok}
+
+
+@router.get("/accounts/qrcode")
+async def get_qrcode():
+    """获取扫码登录二维码图片。"""
+    qr_path = account_manager.get_qrcode_path()
+    if not qr_path:
+        raise HTTPException(status_code=404, detail="未检测到有效二维码")
+    return FileResponse(qr_path, media_type="image/png")
+
+
+# ── 系统状态 ──
+
 @router.get("/status")
 async def get_system_status():
     """获取当前服务与 NapCat 连接状态。"""
     return {
         "napcat_connected": gateway.is_connected,
+        "current_qq": gateway.current_qq,
+        "current_nickname": gateway.current_nickname,
+        "is_process_running": account_manager.is_process_running(),
+        "default_account": account_manager.get_default_account(),
         "active_debouncers": len(gateway.debouncer._sessions) if gateway.debouncer else 0,
         "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }

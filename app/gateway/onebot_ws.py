@@ -18,6 +18,8 @@ class OneBotGateway:
         self.active_socket: Optional[WebSocket] = None
         self.debouncer: Optional[MessageDebouncer] = None
         self._action_counter = 0
+        self.current_qq: Optional[str] = None
+        self.current_nickname: Optional[str] = None
 
     def set_debouncer(self, debouncer: MessageDebouncer) -> None:
         """注册消息防抖调度器。"""
@@ -28,7 +30,7 @@ class OneBotGateway:
         """检查 NapCat 当前是否在线连接。"""
         return self.active_socket is not None
 
-    async def send_action(self, action: str, params: Dict[str, Any]) -> None:
+    async def send_action(self, action: str, params: Dict[str, Any], echo: Optional[str] = None) -> None:
         """通过反向 WebSocket 调用 OneBot API。"""
         if not self.active_socket:
             logger.warning("NapCat 尚未连接，无法执行 API 调用")
@@ -38,7 +40,7 @@ class OneBotGateway:
         payload = {
             "action": action,
             "params": params,
-            "echo": f"req_{self._action_counter}",
+            "echo": echo or f"req_{self._action_counter}",
         }
         try:
             await self.active_socket.send_text(json.dumps(payload, ensure_ascii=False))
@@ -92,7 +94,16 @@ class OneBotGateway:
         """处理来自 NapCat 的反向 WebSocket 客户端连接。"""
         await websocket.accept()
         self.active_socket = websocket
-        logger.info("NapCatQQ 协议端已连接")
+        
+        # 尝试从握手请求头提取登录账号
+        client_self_id = websocket.headers.get("x-self-id")
+        if client_self_id:
+            self.current_qq = str(client_self_id)
+            
+        logger.info(f"NapCatQQ 协议端已连接 (账号: {self.current_qq or '未知'})")
+
+        # 异步拉取当前登录者资料
+        await self.send_action("get_login_info", {}, echo="init_login_info")
 
         try:
             while True:
@@ -100,6 +111,20 @@ class OneBotGateway:
                 try:
                     event = json.loads(msg_text)
                 except Exception:
+                    continue
+
+                # 记录协议端汇报的 self_id
+                if "self_id" in event and event["self_id"]:
+                    self.current_qq = str(event["self_id"])
+
+                # 处理主动查询的登录信息回执
+                if event.get("echo") == "init_login_info":
+                    data = event.get("data") or {}
+                    if "user_id" in data:
+                        self.current_qq = str(data["user_id"])
+                    if "nickname" in data:
+                        self.current_nickname = str(data["nickname"])
+                    logger.info(f"已同步当前 QQ 资料: {self.current_nickname} ({self.current_qq})")
                     continue
 
                 # 忽略心跳与生命周期广播
@@ -135,6 +160,8 @@ class OneBotGateway:
             logger.error(f"WebSocket 运行时异常: {e}")
         finally:
             self.active_socket = None
+            self.current_qq = None
+            self.current_nickname = None
 
 
 gateway = OneBotGateway()
