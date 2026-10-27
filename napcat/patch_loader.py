@@ -1,6 +1,8 @@
-"""自动检测并确保 QQNT 资源目录挂载 NapCat 引导入口。"""
+"""自动检测并确保 QQNT 资源目录挂载 NapCat 引导入口，并记录最近登录账号。"""
 
+import glob
 import os
+import re
 import winreg
 
 
@@ -14,7 +16,7 @@ def patch_qq_versions():
         uninstall_str, _ = winreg.QueryValueEx(key, "UninstallString")
         qq_dir = os.path.dirname(uninstall_str.strip('"'))
         versions_dir = os.path.join(qq_dir, "versions")
-        
+
         current_dir = os.path.abspath(os.path.dirname(__file__))
         napcat_mjs = os.path.join(current_dir, "napcat.mjs").replace("\\", "/")
 
@@ -38,5 +40,25 @@ def patch_qq_versions():
         print(f"检查 QQ 目录异常: {e}")
 
 
+def record_latest_account():
+    """检测最近登录的 QQ 账号，供免密快速登录使用。"""
+    try:
+        current_dir = os.path.abspath(os.path.dirname(__file__))
+        config_dir = os.path.join(current_dir, "config")
+        files = glob.glob(os.path.join(config_dir, "onebot11_*.json"))
+        if files:
+            files.sort(key=os.path.getmtime, reverse=True)
+            m = re.search(r"onebot11_(\d+)\.json", os.path.basename(files[0]))
+            if m:
+                latest_qq = m.group(1)
+                last_account_file = os.path.join(current_dir, ".last_account")
+                with open(last_account_file, "w", encoding="utf-8") as f:
+                    f.write(latest_qq.strip())
+                print(f"检测到最近登录账号: {latest_qq}")
+    except Exception as e:
+        print(f"记录账号异常: {e}")
+
+
 if __name__ == "__main__":
     patch_qq_versions()
+    record_latest_account()

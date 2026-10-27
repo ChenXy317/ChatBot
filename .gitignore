@@ -10,3 +10,4 @@ napcat/*.exe
 napcat/logs/
 napcat/cache/
 napcat/config/*_[0-9]*.json
+napcat/.last_account
