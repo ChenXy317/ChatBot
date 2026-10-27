@@ -1,4 +1,4 @@
-"""自动检测并确保 QQNT 资源目录挂载 NapCat 引导入口，并记录最近登录账号。"""
+"""自动检测并确保 QQNT 资源目录挂载 NapCat 引导入口，并记录最近登录账号与 QQ 路径。"""
 
 import glob
 import os
@@ -63,6 +63,45 @@ def record_latest_account():
         print(f"记录账号异常: {e}")
 
 
+def record_qq_path():
+    """检测 QQ.exe 绝对路径并写入 .qq_path，供启动脚本直接定位。"""
+    try:
+        current_dir = os.path.abspath(os.path.dirname(__file__))
+        qq_path_file = os.path.join(current_dir, ".qq_path")
+
+        candidates = []
+        for reg_key in (
+            r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\QQ",
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\QQ",
+            r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\QQNT",
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\QQNT",
+        ):
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_key) as key:
+                    uninstall_str, _ = winreg.QueryValueEx(key, "UninstallString")
+                    qq_dir = os.path.dirname(str(uninstall_str).strip('"'))
+                    candidates.append(os.path.join(qq_dir, "QQ.exe"))
+            except OSError:
+                continue
+
+        candidates.extend([
+            r"D:\工具2\QQ\QQ.exe",
+            os.path.expandvars(r"%ProgramFiles%\Tencent\QQNT\QQ.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Tencent\QQNT\QQ.exe"),
+            os.path.expandvars(r"%LocalAppData%\Programs\Tencent\QQNT\QQ.exe"),
+        ])
+
+        for c in candidates:
+            if os.path.isfile(c):
+                with open(qq_path_file, "w", encoding="utf-8") as f:
+                    f.write(os.path.abspath(c))
+                print(f"已锁定 QQNT 可执行文件路径: {c}")
+                return
+    except Exception as e:
+        print(f"检测 QQ 路径异常: {e}")
+
+
 if __name__ == "__main__":
     patch_qq_versions()
     record_latest_account()
+    record_qq_path()
