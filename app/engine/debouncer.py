@@ -33,7 +33,16 @@ class MessageDebouncer:
     ):
         self._send_message_fn = send_message_fn
         self._set_status_fn = set_status_fn
+        self._state_callback = None
         self._sessions: Dict[int, UserSessionState] = {}
+
+    def set_state_callback(self, callback) -> None:
+        """注册诊断状态回调，不直接依赖网关模块。"""
+        self._state_callback = callback
+
+    def _set_state(self, value: str) -> None:
+        if self._state_callback:
+            self._state_callback(value)
 
     def get_session(self, user_id: int) -> UserSessionState:
         """获取或创建用户的会话状态。"""
@@ -46,10 +55,12 @@ class MessageDebouncer:
         user_id: int,
         text: str,
         image_urls: Optional[List[str]] = None,
+        message_id: Optional[str] = None,
     ) -> None:
         """处理接收到的私聊消息并调度防抖与打断。"""
         image_urls = image_urls or []
         state = self.get_session(user_id)
+        self._set_state(f"incoming:{user_id}:{message_id or ''}")
 
         # 1. 如果之前正在执行大模型生成或发送，立即强制打断并丢弃
         if state.generation_task and not state.generation_task.done():
@@ -114,6 +125,7 @@ class MessageDebouncer:
             cfg_res = await session.execute(select(BotConfig).limit(1))
             cfg = cfg_res.scalar_one_or_none()
             if not cfg or not cfg.is_enabled:
+                self._set_state("skipped_disabled")
                 logger.info(f"自动接管未开启，跳过用户 {user_id}")
                 return
 
@@ -123,8 +135,10 @@ class MessageDebouncer:
             )
             wl_user = wl_res.scalar_one_or_none()
             if not wl_user or not wl_user.is_enabled:
+                self._set_state(f"skipped_whitelist:{user_id}")
                 logger.info(f"用户 {user_id} 不在白名单或已被停用，跳过回复")
                 return
+            self._set_state(f"llm_started:{user_id}")
 
             # 加载历史上下文（取最近 20 条，按时间正序）
             msg_res = await session.execute(
@@ -169,7 +183,9 @@ class MessageDebouncer:
             )
 
             if not reply_text:
+                self._set_state(f"empty_reply:{user_id}")
                 return
+            self._set_state(f"reply_ready:{user_id}")
 
             # 持久化存储用户本次发送的消息
             async with async_session_factory() as session:
@@ -190,11 +206,14 @@ class MessageDebouncer:
                 send_message_fn=self._send_message_fn,
                 set_status_fn=self._set_status_fn,
             )
+            self._set_state(f"sent:{user_id}")
 
         except asyncio.CancelledError:
+            self._set_state(f"cancelled:{user_id}")
             logger.info(f"用户 {user_id} 的回复任务在执行中被强行打断，已舍弃输出")
             raise
         except Exception as e:
+            self._set_state(f"error:{user_id}:{str(e)}")
             logger.error(f"处理用户 {user_id} 对话失败: {e}", exc_info=True)
             async with async_session_factory() as session:
                 log_entry = SystemLog(

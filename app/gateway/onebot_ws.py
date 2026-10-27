@@ -4,10 +4,12 @@ import asyncio
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import WebSocket, WebSocketDisconnect
 from app.core.config import settings
 from app.engine.debouncer import MessageDebouncer
+from app.engine.duplicate_guard import MessageDeduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,10 @@ class OneBotGateway:
         self._action_counter = 0
         self.current_qq: Optional[str] = None
         self.current_nickname: Optional[str] = None
+        self._pending_actions: Dict[str, asyncio.Future] = {}
+        self.last_event: Dict[str, Any] = {}
+        self.last_debouncer_state: str = "idle"
+        self._deduplicator = MessageDeduplicator()
 
     def set_debouncer(self, debouncer: MessageDebouncer) -> None:
         """注册消息防抖调度器。"""
@@ -31,26 +37,59 @@ class OneBotGateway:
         """检查 NapCat 当前是否在线连接。"""
         return self.active_socket is not None
 
-    async def send_action(self, action: str, params: Dict[str, Any], echo: Optional[str] = None) -> None:
-        """通过反向 WebSocket 调用 OneBot API。"""
+    async def send_action(
+        self,
+        action: str,
+        params: Dict[str, Any],
+        echo: Optional[str] = None,
+        wait_response: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """通过反向 WebSocket 调用 OneBot API，并按需等待回执。"""
         if not self.active_socket:
             logger.warning("NapCat 尚未连接，无法执行 API 调用")
-            return
+            return None
 
         self._action_counter += 1
+        request_id = echo or f"req_{self._action_counter}"
         payload = {
             "action": action,
             "params": params,
-            "echo": echo or f"req_{self._action_counter}",
+            "echo": request_id,
         }
+        response_future = None
+        if wait_response:
+            response_future = asyncio.get_running_loop().create_future()
+            self._pending_actions[request_id] = response_future
         try:
             await self.active_socket.send_text(json.dumps(payload, ensure_ascii=False))
+            if response_future:
+                return await asyncio.wait_for(response_future, timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.error(f"等待 OneBot 指令回执超时 ({action})")
+            return None
         except Exception as e:
             logger.error(f"发送 OneBot 指令失败 ({action}): {e}")
+            return None
+        finally:
+            if response_future:
+                self._pending_actions.pop(request_id, None)
+        return None
+
+    def is_self_message(self, event: Dict[str, Any]) -> bool:
+        """拒绝 self_id 与 user_id 相同的消息，避免自动回复形成回环。"""
+        self_id = event.get("self_id")
+        user_id = event.get("user_id")
+        return bool(self_id and user_id and str(self_id) == str(user_id))
 
     async def send_private_message(self, user_id: int, message: str) -> None:
         """向指定 QQ 好友发送私聊文本消息。"""
-        await self.send_action("send_private_msg", {"user_id": user_id, "message": message})
+        response = await self.send_action(
+            "send_private_msg",
+            {"user_id": user_id, "message": message},
+            wait_response=True,
+        )
+        if not response or response.get("status") == "failed" or response.get("retcode", 0) != 0:
+            raise RuntimeError(f"QQ 消息发送失败: {response}")
 
     async def set_input_status(self, user_id: int) -> None:
         """将私聊窗口置为“正在输入中...”状态。"""
@@ -126,6 +165,23 @@ class OneBotGateway:
                 except Exception:
                     continue
 
+                echo = event.get("echo")
+                if echo and echo in self._pending_actions:
+                    response_future = self._pending_actions[echo]
+                    if not response_future.done():
+                        response_future.set_result(event)
+                    continue
+
+                self.last_event = {
+                    "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "post_type": event.get("post_type") or "",
+                    "message_type": event.get("message_type") or "",
+                    "user_id": str(event.get("user_id") or ""),
+                    "self_id": str(event.get("self_id") or ""),
+                    "action": "received",
+                }
+                logger.debug("收到 OneBot 事件: %s", self.last_event)
+
                 # 记录协议端汇报的 self_id
                 if "self_id" in event and event["self_id"]:
                     self.current_qq = str(event["self_id"])
@@ -146,24 +202,43 @@ class OneBotGateway:
 
                 # 仅处理私聊消息事件
                 if event.get("post_type") == "message" and event.get("message_type") == "private":
+                    if self.is_self_message(event):
+                        self.last_event["action"] = "ignored_self"
+                        logger.debug("忽略机器人自身发送的私聊消息")
+                        continue
+
                     user_id = event.get("user_id")
                     if not user_id:
+                        self.last_event["action"] = "ignored_no_user"
                         continue
 
                     # 提取文字与多模态图片
                     text, images = self.extract_message_content(event)
                     if not text and not images:
+                        self.last_event["action"] = "ignored_empty"
                         continue
 
                     logger.info(f"收到好友 [{user_id}] 消息: {text} (图片: {len(images)} 张)")
+                    message_id = str(event.get("message_id") or "")
+                    if not self._deduplicator.accept(message_id):
+                        self.last_event["action"] = "ignored_duplicate"
+                        logger.info("忽略重复私聊消息: message_id=%s", message_id)
+                        continue
+                    self.last_event["action"] = "queued"
 
                     if self.debouncer:
+                        logger.info(
+                            "转发私聊消息: message_id=%s user_id=%s",
+                            event.get("message_id"),
+                            user_id,
+                        )
                         # 投递至防抖与打断引擎
                         asyncio.create_task(
                             self.debouncer.handle_incoming_message(
                                 user_id=user_id,
                                 text=text,
                                 image_urls=images,
+                                message_id=message_id,
                             )
                         )
 
@@ -172,6 +247,10 @@ class OneBotGateway:
         except Exception as e:
             logger.error(f"WebSocket 运行时异常: {e}")
         finally:
+            for response_future in self._pending_actions.values():
+                if not response_future.done():
+                    response_future.cancel()
+            self._pending_actions.clear()
             self.active_socket = None
             self.current_qq = None
             self.current_nickname = None

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router as api_router
 from app.core.config import settings
 from app.core.database import engine, init_db
+from app.engine.account_manager import account_manager
 from app.engine.debouncer import MessageDebouncer
 from app.gateway.onebot_ws import gateway
 
@@ -22,7 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 WEB_DIR = Path(__file__).parent / "web"
-API_VERSION = "2026-10-27.2"
+API_VERSION = "2026-10-27.7"
 
 
 @asynccontextmanager
@@ -30,11 +31,13 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理：初始化数据库与注册核心调度器。"""
     logger.info("正在初始化数据库与加载配置...")
     await init_db()
+    account_manager.ensure_default_account_config()
 
     debouncer = MessageDebouncer(
         send_message_fn=gateway.send_private_message,
         set_status_fn=gateway.set_input_status,
     )
+    debouncer.set_state_callback(lambda value: setattr(gateway, "last_debouncer_state", value))
     gateway.set_debouncer(debouncer)
     logger.info("消息防抖与打断调度器已就绪")
 

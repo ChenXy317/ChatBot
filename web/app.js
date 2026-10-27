@@ -141,6 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const typingInput = document.getElementById("typing_speed");
   const typingVal = document.getElementById("typingVal");
   const masterSwitch = document.getElementById("masterSwitch");
+  const restartAppBtn = document.getElementById("restartAppBtn");
 
   tempSlider.addEventListener("input", e => tempVal.textContent = e.target.value);
   topPSlider.addEventListener("input", e => topPVal.textContent = e.target.value);
@@ -154,7 +155,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
 
       document.getElementById("api_base").value = data.api_base || "";
-      document.getElementById("api_key").value = data.api_key || "";
+      document.getElementById("api_key").value = "";
+      document.getElementById("api_key").placeholder = data.api_key_set
+        ? "已保存密钥；留空表示不修改"
+        : "sk-...";
       document.getElementById("model").value = data.model || "";
       document.getElementById("max_tokens").value = data.max_tokens || 2048;
       document.getElementById("system_prompt").value = data.system_prompt || "";
@@ -183,7 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const payload = {
       api_base: document.getElementById("api_base").value.trim(),
-      api_key: document.getElementById("api_key").value.trim(),
+      api_key: document.getElementById("api_key").value.trim() || undefined,
       model: document.getElementById("model").value.trim(),
       debounce_delay: parseFloat(debounceInput.value),
       typing_speed: parseFloat(typingInput.value),
@@ -200,6 +204,11 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("保存接口异常");
+      const saved = await res.json();
+      document.getElementById("api_key").value = "";
+      document.getElementById("api_key").placeholder = saved.api_key_set
+        ? "已保存密钥；留空表示不修改"
+        : "sk-...";
       showToast("配置已成功更新并生效", "success");
     } catch (err) {
       showToast("保存失败: " + err.message, "error");
@@ -219,9 +228,29 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok) throw new Error("切换接口异常");
       showToast(masterSwitch.checked ? "已开启自动接管" : "已暂停自动接管", "info");
     } catch (err) {
+      masterSwitch.checked = !masterSwitch.checked;
       showToast("切换接管状态失败", "error");
     }
   });
+
+  if (restartAppBtn) {
+    restartAppBtn.addEventListener("click", async () => {
+      if (!confirm("重启服务后，当前会话会断开。确定继续吗？")) return;
+      restartAppBtn.disabled = true;
+      try {
+        const res = await apiFetch("/api/system/shutdown", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ restart: true }),
+        });
+        if (!res.ok) throw new Error("重启接口异常");
+        showToast("服务正在重启，请稍候刷新页面", "info");
+      } catch (error) {
+        showToast("重启失败: " + error.message, "error");
+        restartAppBtn.disabled = false;
+      }
+    });
+  }
 
   // ── 连通性测试 ──
   const testConnBtn = document.getElementById("testConnBtn");
@@ -497,6 +526,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const quickLaunchForm = document.getElementById("quickLaunchForm");
   const quickLaunchQQ = document.getElementById("quickLaunchQQ");
   const quickLaunchSubmitBtn = document.getElementById("quickLaunchSubmitBtn");
+  const sendTestForm = document.getElementById("sendTestForm");
+  const testMessageUserId = document.getElementById("testMessageUserId");
+  const testMessageText = document.getElementById("testMessageText");
+  const sendTestBtn = document.getElementById("sendTestBtn");
 
   // 扫码弹层元素
   const qrModal = document.getElementById("qrModal");
@@ -775,6 +808,31 @@ document.addEventListener("DOMContentLoaded", () => {
         quickLaunchSubmitBtn.disabled = false;
         setTimeout(loadAccounts, 1500);
         setTimeout(pollStatus, 2000);
+      }
+    });
+  }
+
+  if (sendTestForm) {
+    sendTestForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const userId = parseInt(testMessageUserId.value, 10);
+      const message = testMessageText.value.trim();
+      if (!Number.isInteger(userId) || !message) return;
+      sendTestBtn.disabled = true;
+      try {
+        const res = await apiFetch("/api/system/send-test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, message }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "发送失败");
+        showToast(data.message || "测试消息已发送", "success");
+        testMessageText.value = "";
+      } catch (error) {
+        showToast("测试消息发送失败: " + error.message, "error");
+      } finally {
+        sendTestBtn.disabled = false;
       }
     });
   }

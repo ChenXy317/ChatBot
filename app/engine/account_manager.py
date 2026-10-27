@@ -374,6 +374,18 @@ class AccountManager:
         }
 
     @classmethod
+    def ensure_default_account_config(cls) -> bool:
+        """应用启动时对齐所有已保存账号的 OneBot 配置，特别是 token。"""
+        aligned = False
+        if not os.path.isdir(CONFIG_DIR):
+            return False
+        for filename in os.listdir(CONFIG_DIR):
+            match = re.fullmatch(r"onebot11_(\d{5,11})\.json", filename)
+            if match:
+                aligned = cls.ensure_ws_config(match.group(1)) or aligned
+        return aligned
+
+    @classmethod
     def delete_account(cls, qq: str) -> bool:
         """移除指定账号的本地配置。"""
         if not cls._is_valid_qq(qq):

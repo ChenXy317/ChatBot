@@ -23,6 +23,7 @@ class BotConfigRead(BotConfigBase):
     """配置读取响应。"""
     id: int
     updated_at: datetime
+    api_key_set: bool = False
 
     class Config:
         from_attributes = True
@@ -40,6 +41,11 @@ class BotConfigUpdate(BaseModel):
     debounce_delay: Optional[float] = Field(default=None, ge=0.5, le=10.0)
     typing_speed: Optional[float] = Field(default=None, ge=0.01, le=1.0)
     is_enabled: Optional[bool] = None
+
+
+class DeferredBotConfigUpdate(BotConfigUpdate):
+    """允许控制台在编辑时提交空白密钥，保留数据库中的原密钥。"""
+    api_key: Optional[str] = Field(default=None, description="留空时保留现有密钥")
 
 
 class WhitelistUserCreate(BaseModel):
@@ -98,7 +104,8 @@ class SystemLogRead(BaseModel):
 class TestConnectionRequest(BaseModel):
     """模型接口连通性测试请求。"""
     api_base: str
-    api_key: str
+    api_key: str = ""
+    api_key_set: bool = False
     model: str
 
 
@@ -128,6 +135,11 @@ class AccountLoginStatus(BaseModel):
     qrcode_url: str
 
 
+class AccountQuickLoginRequest(BaseModel):
+    """通过 QQ 号触发 NapCat 快速登录。"""
+    qq: str = Field(..., pattern=r"^[1-9]\d{4,10}$", description="目标 QQ 账号")
+
+
 class AccountListResponse(BaseModel):
     """账号列表与运行状态响应。"""
     online_qq: Optional[str] = None
@@ -143,11 +155,6 @@ class AccountSwitchRequest(BaseModel):
     """切换账号请求。"""
     qq: str = Field(..., pattern=r"^[1-9]\d{4,10}$", description="目标 QQ 账号")
     auto_start: bool = Field(default=True, description="是否立即拉起启动")
-
-
-class AccountQuickLoginRequest(BaseModel):
-    """通过 QQ 号触发 NapCat 快速登录。"""
-    qq: str = Field(..., pattern=r"^[1-9]\d{4,10}$", description="目标 QQ 账号")
 
 
 class AccountSetDefaultRequest(BaseModel):

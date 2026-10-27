@@ -1,15 +1,19 @@
 """Web 管理控制台 REST API 路由。"""
 
+import asyncio
+import os
+import subprocess
 import time
 from datetime import datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db_session
-from app.engine.account_manager import account_manager
+from app.engine.account_manager import ROOT_DIR, account_manager
 from app.gateway.onebot_ws import gateway
 from app.models.orm import BotConfig, ChatMessage, SystemLog, WhitelistUser
 from app.schemas.common import (
@@ -21,7 +25,7 @@ from app.schemas.common import (
     AccountSetDefaultRequest,
     AccountSwitchRequest,
     BotConfigRead,
-    BotConfigUpdate,
+    DeferredBotConfigUpdate,
     ChatMessageRead,
     SystemLogRead,
     TestConnectionRequest,
@@ -43,24 +47,54 @@ async def get_config(db: AsyncSession = Depends(get_db_session)):
     cfg = res.scalar_one_or_none()
     if not cfg:
         raise HTTPException(status_code=404, detail="未找到配置")
-    return cfg
+    values = {
+        column.name: getattr(cfg, column.name)
+        for column in BotConfig.__table__.columns
+        if column.name != "api_key"
+    }
+    values["api_key"] = ""
+    values["api_key_set"] = bool(cfg.api_key)
+    return BotConfigRead(
+        **values,
+    )
 
 
 @router.put("/config", response_model=BotConfigRead)
-async def update_config(payload: BotConfigUpdate, db: AsyncSession = Depends(get_db_session)):
+async def update_config(payload: DeferredBotConfigUpdate, db: AsyncSession = Depends(get_db_session)):
     """更新机器人全局配置。"""
     res = await db.execute(select(BotConfig).limit(1))
     cfg = res.scalar_one_or_none()
     if not cfg:
         raise HTTPException(status_code=404, detail="未找到配置")
 
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes.get("api_key"):
+        changes.pop("api_key", None)
+    for k, v in changes.items():
         setattr(cfg, k, v)
 
     cfg.updated_at = datetime.now()
     await db.commit()
     await db.refresh(cfg)
-    return cfg
+    values = {
+        column.name: getattr(cfg, column.name)
+        for column in BotConfig.__table__.columns
+        if column.name != "api_key"
+    }
+    values["api_key"] = ""
+    values["api_key_set"] = bool(cfg.api_key)
+    return BotConfigRead(**values)
+
+
+class SystemShutdownRequest(BaseModel):
+    """本地控制台关闭系统请求。"""
+    restart: bool = False
+
+
+class MessageSendRequest(BaseModel):
+    """本地控制台向指定 QQ 发送测试消息。"""
+    user_id: int = Field(..., ge=10000)
+    message: str = Field(..., min_length=1, max_length=500)
 
 
 @router.post("/config/test", response_model=TestConnectionResponse)
@@ -236,6 +270,38 @@ async def stop_napcat():
     return {"success": ok, "message": "已发送停止进程指令"}
 
 
+@router.post("/system/shutdown")
+async def shutdown_system(payload: SystemShutdownRequest = SystemShutdownRequest()):
+    """关闭或重启当前 ChatBot 进程，由本地启动器负责重新拉起。"""
+    async def exit_soon() -> None:
+        await asyncio.sleep(0.3)
+        if payload.restart:
+            subprocess.Popen(
+                ["cmd.exe", "/c", "start", "", str(ROOT_DIR / "start.bat")],
+                cwd=str(ROOT_DIR),
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) | subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+        os._exit(0)
+
+    asyncio.create_task(exit_soon())
+    return {
+        "success": True,
+        "message": "正在重启 ChatBot" if payload.restart else "正在关闭 ChatBot",
+    }
+
+
+@router.post("/system/send-test")
+async def send_test_message(payload: MessageSendRequest):
+    """通过 ChatBot 网关发送测试私聊，验证发送链路。"""
+    if not gateway.is_connected:
+        raise HTTPException(status_code=409, detail="NapCat WebSocket 未连接")
+    try:
+        await gateway.send_private_message(payload.user_id, payload.message)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return {"success": True, "message": "测试消息已发送"}
+
+
 @router.delete("/accounts/{qq}")
 async def delete_account(qq: str):
     """删除本地指定账号的配置文件。"""
@@ -267,5 +333,7 @@ async def get_system_status():
         "is_process_running": account_manager.is_process_running(),
         "default_account": account_manager.get_default_account(),
         "active_debouncers": len(gateway.debouncer._sessions) if gateway.debouncer else 0,
+        "last_event": gateway.last_event,
+        "last_debouncer_state": gateway.last_debouncer_state,
         "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }

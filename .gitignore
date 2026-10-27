@@ -12,3 +12,6 @@ napcat/cache/
 napcat/config/*_[0-9]*.json
 napcat/.last_account
 napcat/.onebot_ws_token
+napcat/guild*.db
+napcat/guild*.db-shm
+napcat/guild*.db-wal

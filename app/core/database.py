@@ -2,7 +2,7 @@
 
 import logging
 from typing import AsyncGenerator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from app.core.config import settings
 from app.models.orm import Base, BotConfig
@@ -41,10 +41,15 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session_factory() as session:
-        result = await session.execute(select(BotConfig).limit(1))
-        config = result.scalar_one_or_none()
-        if not config:
+        result = await session.execute(select(BotConfig).order_by(BotConfig.id))
+        configs = list(result.scalars().all())
+        if not configs:
             default_config = BotConfig()
             session.add(default_config)
             await session.commit()
             logger.info("已初始化默认机器人配置")
+        elif len(configs) > 1:
+            keep_id = configs[0].id
+            await session.execute(delete(BotConfig).where(BotConfig.id != keep_id))
+            await session.commit()
+            logger.warning("检测到多条机器人配置，已清理重复记录，保留 ID=%s", keep_id)
