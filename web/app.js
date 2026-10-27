@@ -721,7 +721,15 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderLoginState(status) {
     const phase = status.login_phase || "";
     const label = loginPhaseLabels[phase] || (status.is_login ? "登录成功" : "等待 QR 登录服务");
-    if (overviewLoginPhase) overviewLoginPhase.textContent = label;
+    if (overviewLoginPhase) {
+      if (phase === "waiting_qrcode") {
+        overviewLoginPhase.innerHTML = `等待手机 QQ 扫码 <a href="javascript:void(0)" id="overviewPhaseQrLink" style="color: var(--text-primary); text-decoration: underline; margin-left: 6px; font-size: 12px; cursor: pointer;">[点击扫码]</a>`;
+        const link = document.getElementById("overviewPhaseQrLink");
+        if (link) link.onclick = openQrModal;
+      } else {
+        overviewLoginPhase.textContent = label;
+      }
+    }
     if (qrLoginStatus) qrLoginStatus.textContent = label;
     if (qrErrorMessage) {
       if (status.login_error) {
@@ -800,9 +808,19 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.is_connected) {
         if (overviewDot) overviewDot.className = "badge-dot online";
         if (overviewOnlineText) overviewOnlineText.textContent = "在线运行中";
+      } else if (data.napcat_status && data.napcat_status.login_phase === "waiting_qrcode") {
+        if (overviewDot) overviewDot.className = "badge-dot";
+        if (overviewOnlineText) {
+          overviewOnlineText.innerHTML = '待扫码登录 <button class="btn btn-secondary btn-xs" style="margin-left: 6px; padding: 1px 6px; font-size: 11px;" id="overviewQrBtn">立即扫码</button>';
+          const btn = document.getElementById("overviewQrBtn");
+          if (btn) btn.onclick = openQrModal;
+        }
+      } else if (data.napcat_status && data.napcat_status.login_phase === "qrcode_scanned") {
+        if (overviewDot) overviewDot.className = "badge-dot";
+        if (overviewOnlineText) overviewOnlineText.textContent = "已扫码待手机确认";
       } else {
         if (overviewDot) overviewDot.className = "badge-dot";
-        if (overviewOnlineText) overviewOnlineText.textContent = "离线";
+        if (overviewOnlineText) overviewOnlineText.textContent = data.is_process_running ? "启动中" : "未启动";
       }
 
       const curNick = data.online_nickname ? `${data.online_nickname} · ` : "";
@@ -1112,7 +1130,7 @@ document.addEventListener("DOMContentLoaded", () => {
           statusText.textContent = `已连接: ${nick}${data.current_qq || "QQ"}`;
         } else {
           napcatBadge.className = "connection-badge";
-          statusText.textContent = "NapCat 协议端未连接";
+          statusText.textContent = data.is_process_running ? "QQ 协议端运行中（待扫码）" : "NapCat 协议端未连接";
         }
       }
     } catch (err) {
