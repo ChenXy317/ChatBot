@@ -100,12 +100,22 @@ class MessageSendRequest(BaseModel):
 
 
 @router.post("/config/test", response_model=TestConnectionResponse)
-async def test_llm_connection(payload: TestConnectionRequest):
-    """测试模型接口连通性与响应速度。"""
+async def test_llm_connection(
+    payload: TestConnectionRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """测试模型接口连通性与响应速度。输入为空时自动使用已保存的密钥。"""
     start_time = time.time()
     try:
+        api_key = payload.api_key.strip() if payload.api_key else ""
+        if not api_key:
+            res = await db.execute(select(BotConfig).limit(1))
+            cfg = res.scalar_one_or_none()
+            if cfg and cfg.api_key:
+                api_key = cfg.api_key
+
         client = AsyncOpenAI(
-            api_key=payload.api_key or "sk-no-auth",
+            api_key=api_key or "sk-no-auth",
             base_url=payload.api_base.rstrip("/"),
             timeout=15.0,
         )
