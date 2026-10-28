@@ -101,7 +101,10 @@ class LLMClient:
                 messages.append({"role": role, "content": formatted_text})
 
         # 追加本次待回答的用户消息
-        latest_text = f"[{current_time_str}] {new_user_text}"
+        # 纯图片消息没有文字，必须补一个可见占位，否则部分兼容接口会把它
+        # 当成空字符串并在预处理阶段丢弃，视觉模型也就看不到图片内容。
+        visible_text = new_user_text.strip() or "我发来了一张图片，请查看图片内容并回复。"
+        latest_text = f"[{current_time_str}] {visible_text}"
         if new_image_urls:
             latest_content: List[Dict[str, Any]] = [{"type": "text", "text": latest_text}]
             for img_url in new_image_urls:

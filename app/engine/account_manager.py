@@ -158,6 +158,7 @@ class AccountManager:
 
             network = cfg.setdefault("network", {})
             clients = network.setdefault("websocketClients", [])
+            cfg["enableLocalFile2Url"] = True
 
             has_client = False
             target_ws_url = f"ws://127.0.0.1:{settings.SERVER_PORT}/ws/qq"
@@ -166,6 +167,8 @@ class AccountManager:
                     client["enable"] = True
                     client["url"] = target_ws_url
                     client["token"] = settings.ONEBOT_WS_TOKEN
+                    client["messagePostFormat"] = "array"
+                    client["reportSelfMessage"] = False
                     has_client = True
                     break
 
@@ -229,7 +232,7 @@ class AccountManager:
 
     @classmethod
     def launch_napcat(cls, qq: Optional[str] = None, qr_mode: bool = False) -> Dict[str, Any]:
-        """拉起 NapCatQQ 实例并置入独立控制台运行。"""
+        """拉起 NapCatQQ 实例，并在后台隐藏运行，不创建额外终端窗口。"""
         if sys.platform != "win32":
             return {
                 "success": False,
@@ -319,7 +322,13 @@ class AccountManager:
                 command,
                 cwd=NAPCAT_DIR,
                 env=cls._launcher_environment(),
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=(
+                    getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                ),
                 close_fds=True,
             )
             return {
@@ -415,6 +424,7 @@ class AccountManager:
 
             network = cfg.setdefault("network", {})
             clients = network.setdefault("websocketClients", [])
+            cfg["enableLocalFile2Url"] = True
             target_ws_url = f"ws://127.0.0.1:{settings.SERVER_PORT}/ws/qq"
             has_client = False
             for client in clients:
@@ -422,6 +432,8 @@ class AccountManager:
                     client["enable"] = True
                     client["url"] = target_ws_url
                     client["token"] = settings.ONEBOT_WS_TOKEN
+                    client["messagePostFormat"] = "array"
+                    client["reportSelfMessage"] = False
                     has_client = True
                     break
             if not has_client:

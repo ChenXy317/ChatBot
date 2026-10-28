@@ -31,6 +31,21 @@ if (Test-Path ".env") {
     }
 }
 
+$QqArgument = if ($args.Count -gt 0) { [string]$args[0] } else { "" }
+if (-not $QqArgument -and (Test-Path "napcat\.last_account")) {
+    $QqArgument = (Get-Content "napcat\.last_account" -Raw).Trim()
+}
+
+$QrMode = $QqArgument -in @("", "qr", "scan", "-qr")
+$LaunchAccount = if ($QrMode) { "None" } else { "'$($QqArgument.Replace("'", "''"))'" }
+$LaunchArguments = @(
+    "-c",
+    "from app.engine.account_manager import account_manager; import sys; " +
+    "result = account_manager.launch_napcat(qq=$LaunchAccount, qr_mode=$($QrMode.ToString().ToLower())); " +
+    "print(result['message']); sys.exit(0 if result['success'] else 1)"
+)
+& $PyBin @LaunchArguments
+
 if ($BackendPreflight -eq 10) {
     Write-Host "后端已运行且为当前版本：http://127.0.0.1:$Port" -ForegroundColor Green
 } else {

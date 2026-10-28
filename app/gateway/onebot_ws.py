@@ -1,10 +1,13 @@
 """OneBot v11 反向 WebSocket 网关，负责与 NapCatQQ 维持长连接与消息解包。"""
 
 import asyncio
+import base64
 import json
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy import delete, select
@@ -31,6 +34,14 @@ CLEAR_COMMANDS = {
     "重置对话",
     "清空历史",
 }
+
+
+@dataclass
+class ExtractedMessage:
+    """解析后的消息内容，以及需要向 NapCat 补取 URL 的图片引用。"""
+    text: str
+    image_urls: List[str] = field(default_factory=list)
+    unresolved_images: List[str] = field(default_factory=list)
 
 
 class OneBotGateway:
@@ -114,13 +125,58 @@ class OneBotGateway:
         """将私聊窗口置为“正在输入中...”状态。"""
         await self.send_action("set_input_status", {"user_id": user_id, "status": 1})
 
+    @staticmethod
+    def _normalize_image_source(data: Dict[str, Any]) -> Optional[str]:
+        """从 OneBot 图片段中挑选可继续解析的图片地址或内部文件标识。"""
+        for key in ("url", "image_url", "file", "file_id"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    @staticmethod
+    def _image_data_url(value: str) -> Optional[str]:
+        """把图片地址或 base64 数据统一成 OpenAI 支持的内容地址。"""
+        if value.startswith(("data:image/", "http://", "https://")):
+            return value
+        if value.startswith("base64://"):
+            return f"data:image/jpeg;base64,{value[9:]}"
+        return None
+
+    @staticmethod
+    def _local_image_data_url(value: str) -> Optional[str]:
+        """把 NapCat 下载到本机的图片转成 data URI。"""
+        try:
+            path = Path(value)
+            if not path.is_file() or path.stat().st_size > 20 * 1024 * 1024:
+                return None
+            encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        except (OSError, ValueError):
+            return None
+
+        suffix = path.suffix.lower()
+        mime_type = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+        }.get(suffix, "image/jpeg")
+        return f"data:{mime_type};base64,{encoded}"
+
     def extract_message_content(self, raw_data: Dict[str, Any]) -> Tuple[str, List[str]]:
-        """从 OneBot 消息事件中提取纯文本与图片链接列表。"""
+        """兼容旧调用方，返回文字与全部图片地址/文件标识。"""
+        extracted = self.parse_message_content(raw_data)
+        return extracted.text, extracted.image_urls + extracted.unresolved_images
+
+    def parse_message_content(self, raw_data: Dict[str, Any]) -> ExtractedMessage:
+        """解析消息段，并区分可用图片与需要向 NapCat 补取地址的图片。"""
         message_obj = raw_data.get("message")
         raw_message = raw_data.get("raw_message", "")
-        
+
         texts: List[str] = []
         image_urls: List[str] = []
+        unresolved_images: List[str] = []
 
         # 优先解析结构化消息段列表
         if isinstance(message_obj, list):
@@ -132,22 +188,82 @@ class OneBotGateway:
                     if text_val:
                         texts.append(text_val)
                 elif seg_type == "image":
-                    url = data.get("url") or data.get("file")
-                    if url and (url.startswith("http://") or url.startswith("https://")):
-                        image_urls.append(url)
+                    encoded = data.get("base64")
+                    if isinstance(encoded, str) and encoded.strip():
+                        encoded = encoded.strip()
+                        if not encoded.startswith("base64://"):
+                            encoded = f"base64://{encoded}"
+                        image_data = self._image_data_url(encoded)
+                        if image_data:
+                            image_urls.append(image_data)
+                            continue
+
+                    source = self._normalize_image_source(data)
+                    if source:
+                        image_data = self._image_data_url(source)
+                        if image_data:
+                            image_urls.append(image_data)
+                        else:
+                            unresolved_images.append(source)
 
         # 兼容 CQ 码格式
-        if not texts and raw_message:
-            # 提取 CQ 码图片 URL
-            cq_images = re.findall(r"\[CQ:image,[^\]]*url=([^,\]]+)", raw_message)
-            image_urls.extend(cq_images)
+        if isinstance(message_obj, str) or not message_obj:
+            for params in re.findall(r"\[CQ:image,([^\]]+)\]", raw_message):
+                parsed = dict(
+                    item.split("=", 1)
+                    for item in params.split(",")
+                    if "=" in item
+                )
+                source = parsed.get("url") or parsed.get("file")
+                if not source:
+                    continue
+                source = source.replace("&amp;", "&")
+                image_data = self._image_data_url(source)
+                if image_data:
+                    image_urls.append(image_data)
+                else:
+                    unresolved_images.append(source)
+
             # 过滤掉 CQ 码得到纯文本
             clean_text = re.sub(r"\[CQ:[^\]]+\]", "", raw_message).strip()
             if clean_text:
                 texts.append(clean_text)
 
         final_text = " ".join(texts).strip()
-        return final_text, image_urls
+        return ExtractedMessage(
+            text=final_text,
+            image_urls=image_urls,
+            unresolved_images=unresolved_images,
+        )
+
+    async def resolve_image_urls(self, image_sources: List[str]) -> List[str]:
+        """对缺少 URL 的图片调用 NapCat get_image，失败时记录并跳过。"""
+        resolved: List[str] = []
+        for source in image_sources:
+            response = await self.send_action(
+                "get_image",
+                {"file": source},
+                wait_response=True,
+            )
+            if not response:
+                logger.warning("NapCat 未能返回图片信息: %s", source)
+                continue
+            if response.get("status") == "failed" or response.get("retcode", 0) != 0:
+                logger.warning("NapCat 获取图片失败: %s (%s)", source, response)
+                continue
+            data = response.get("data") or {}
+            for key in ("base64", "url", "file"):
+                value = data.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                if key == "base64":
+                    value = self._image_data_url(value)
+                elif not value.startswith(("http://", "https://")):
+                    value = self._local_image_data_url(value)
+                if value:
+                    resolved.append(value)
+                    break
+        return resolved
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         """处理来自 NapCat 的反向 WebSocket 客户端连接。"""
@@ -237,10 +353,26 @@ class OneBotGateway:
                         self.last_event["action"] = "ignored_no_user"
                         continue
 
-                    # 提取文字与多模态图片
-                    text, images = self.extract_message_content(event)
-                    if not text and not images:
+                    # 图片段通常只有内部 file ID，需要额外请求 get_image 才能拿到 URL。
+                    extracted = self.parse_message_content(event)
+                    if (
+                        not extracted.text
+                        and not extracted.image_urls
+                        and not extracted.unresolved_images
+                    ):
                         self.last_event["action"] = "ignored_empty"
+                        continue
+
+                    images = list(extracted.image_urls)
+                    if extracted.unresolved_images:
+                        images.extend(await self.resolve_image_urls(extracted.unresolved_images))
+                    text = extracted.text
+                    if not text and not images:
+                        self.last_event["action"] = "ignored_unreadable_image"
+                        logger.warning(
+                            "收到好友 [%s] 的图片消息，但未能取得可访问的图片地址",
+                            user_id,
+                        )
                         continue
 
                     logger.info(f"收到好友 [{user_id}] 消息: {text} (图片: {len(images)} 张)")

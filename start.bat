@@ -44,19 +44,21 @@ if "%QQ_ARG%"=="" (
     )
 )
 
-:: 3. Launch NapCat in separate window
-if "%QQ_ARG%"=="" goto :start_qr
-if /i "%QQ_ARG%"=="qr" goto :start_qr
-if /i "%QQ_ARG%"=="scan" goto :start_qr
-if /i "%QQ_ARG%"=="-qr" goto :start_qr
+:: 3. Launch NapCat through the shared Python manager.
+:: Its launcher uses CREATE_NO_WINDOW, so no separate NapCat terminal is shown.
+if not exist "napcat\logs" mkdir "napcat\logs"
+if "%QQ_ARG%"=="" goto :launch_napcat_qr
+if /i "%QQ_ARG%"=="qr" goto :launch_napcat_qr
+if /i "%QQ_ARG%"=="scan" goto :launch_napcat_qr
+if /i "%QQ_ARG%"=="-qr" goto :launch_napcat_qr
 
 echo   Starting NapCatQQ with quick login: %QQ_ARG%
-start "NapCatQQ" cmd /c "cd /d "%~dp0napcat" && call launcher-user.bat -q %QQ_ARG% || pause"
+"%PY_BIN%" -c "from app.engine.account_manager import account_manager; import sys; r=account_manager.launch_napcat(qq='%QQ_ARG%'); print(r['message']); sys.exit(0 if r['success'] else 1)" >> "napcat\logs\launcher.log" 2>&1
 goto :launch_browser
 
-:start_qr
+:launch_napcat_qr
 echo   Starting NapCatQQ with QR code login...
-start "NapCatQQ" cmd /c "cd /d "%~dp0napcat" && call launcher-user.bat || pause"
+"%PY_BIN%" -c "from app.engine.account_manager import account_manager; import sys; r=account_manager.launch_napcat(qr_mode=True); print(r['message']); sys.exit(0 if r['success'] else 1)" >> "napcat\logs\launcher.log" 2>&1
 
 :launch_browser
 :: 4. Automatically open browser after 2 seconds

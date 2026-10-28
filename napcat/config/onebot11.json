@@ -10,11 +10,12 @@
         "url": "ws://127.0.0.1:8090/ws/qq",
         "reportSelfMessage": false,
         "reconnectInterval": 3000,
-        "token": "xxHr7LlnhSOaWhYmMIOiQ9IN0HszkZ1K"
+        "token": "xxHr7LlnhSOaWhYmMIOiQ9IN0HszkZ1K",
+        "messagePostFormat": "array"
       }
     ]
   },
   "musicSignUrl": "",
-  "enableLocalFile2Url": false,
+  "enableLocalFile2Url": true,
   "parseMultMsg": false
 }

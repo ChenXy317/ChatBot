@@ -46,5 +46,4 @@ if not defined QQPath (
 
 "%NAPCAT_LAUNCHER_PATH%" "%QQPath%" "%NAPCAT_INJECT_PATH%" %*
 set "napcat_exit_code=%ERRORLEVEL%"
-pause
 exit /b %napcat_exit_code%

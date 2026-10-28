@@ -50,10 +50,45 @@ async def init_db() -> None:
         result = await session.execute(select(BotConfig).order_by(BotConfig.id))
         configs = list(result.scalars().all())
         if not configs:
-            default_config = BotConfig()
-            session.add(default_config)
-            await session.commit()
-            logger.info("已初始化默认机器人配置")
+            legacy_columns = await session.execute(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.columns "
+                    "WHERE table_schema = DATABASE() "
+                    "AND table_name = 'bot_config' "
+                    "AND column_name = 'system_prompt'"
+                )
+            )
+            has_legacy_system_prompt = bool(legacy_columns.scalar())
+            if has_legacy_system_prompt:
+                # 旧版表要求 system_prompt 非空。先插入兼容值，再走统一的
+                # 旧字段迁移，避免新版本首次启动被遗留约束阻塞。
+                legacy_prompt = DEFAULT_ROLE_PROMPT + "\n\n" + DEFAULT_OUTPUT_PROMPT
+                await session.execute(
+                    text(
+                        "INSERT INTO bot_config "
+                        "(api_base, api_key, model, role_prompt, output_prompt, "
+                        "system_prompt, temperature, top_p, max_tokens, "
+                        "debounce_delay, typing_speed, is_enabled, updated_at) "
+                        "VALUES (:api_base, '', :model, :role_prompt, :output_prompt, "
+                        ":system_prompt, 0.8, 0.9, 2048, 1.5, 0.15, 1, NOW())"
+                    ),
+                    {
+                        "api_base": "https://api.deepseek.com/v1",
+                        "model": "deepseek-chat",
+                        "role_prompt": DEFAULT_ROLE_PROMPT,
+                        "output_prompt": DEFAULT_OUTPUT_PROMPT,
+                        "system_prompt": legacy_prompt,
+                    },
+                )
+                await session.commit()
+                logger.info("已按旧版表结构初始化默认机器人配置")
+                result = await session.execute(select(BotConfig).order_by(BotConfig.id))
+                configs = list(result.scalars().all())
+            else:
+                default_config = BotConfig()
+                session.add(default_config)
+                await session.commit()
+                logger.info("已初始化默认机器人配置")
         elif len(configs) > 1:
             keep_id = configs[0].id
             await session.execute(delete(BotConfig).where(BotConfig.id != keep_id))
